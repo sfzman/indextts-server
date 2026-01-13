@@ -1,0 +1,38 @@
+# Docker Compose for CPU-only deployment (slower, for testing)
+version: "3.8"
+
+services:
+  indextts-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.cpu
+    image: indextts-server:cpu
+    container_name: indextts-server-cpu
+    restart: unless-stopped
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./outputs:/app/outputs
+      - ./references:/app/references
+
+    environment:
+      - MODEL_DIR=/app/checkpoints
+      - OUTPUT_DIR=/app/outputs
+      - REFERENCE_DIR=/app/references
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MAX_QUEUE_SIZE=50
+      - TASK_TIMEOUT=600
+      - DOWNLOAD_MODEL=false
+
+    entrypoint: ["/app/scripts/entrypoint.sh"]
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 180s

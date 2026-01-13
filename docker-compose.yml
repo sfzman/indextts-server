@@ -1,0 +1,57 @@
+version: "3.8"
+
+services:
+  indextts-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: indextts-server:latest
+    container_name: indextts-server
+    restart: unless-stopped
+
+    # GPU support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      # Mount model directory (download models here first)
+      - ./checkpoints:/app/checkpoints
+      # Output directory for generated audio
+      - ./outputs:/app/outputs
+      # Reference audio files
+      - ./references:/app/references
+
+    environment:
+      - MODEL_DIR=/app/checkpoints
+      - OUTPUT_DIR=/app/outputs
+      - REFERENCE_DIR=/app/references
+      - HOST=0.0.0.0
+      - PORT=8000
+      - MAX_QUEUE_SIZE=100
+      - TASK_TIMEOUT=300
+      # Set to true to auto-download model on first run
+      - DOWNLOAD_MODEL=false
+
+    # Use entrypoint script
+    entrypoint: ["/app/scripts/entrypoint.sh"]
+
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"
+        max-file: "3"

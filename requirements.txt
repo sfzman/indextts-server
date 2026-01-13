@@ -1,0 +1,18 @@
+# IndexTTS Server Requirements
+
+# Web framework
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+aiofiles>=23.0.0
+
+# Data validation
+pydantic>=2.0.0
+
+# ML dependencies (installed separately for CUDA support)
+# torch>=2.0.0
+# torchaudio>=2.0.0
+# transformers>=4.30.0
+
+# IndexTTS will be installed from git repository
+# See Dockerfile for full installation
