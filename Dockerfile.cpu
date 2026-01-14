@@ -8,21 +8,17 @@ WORKDIR /app
 # Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
-    git-lfs \
     build-essential \
     libsndfile1 \
     ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Initialize git-lfs
-RUN git lfs install
-
 # Install uv
 RUN pip install uv
 
-# Clone IndexTTS repository
-RUN git clone https://github.com/index-tts/index-tts.git /opt/indextts
+# Clone IndexTTS repository (skip LFS files to avoid bandwidth limits)
+RUN GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/index-tts/index-tts.git /opt/indextts
 
 # Create virtual environment
 RUN uv venv /opt/venv
