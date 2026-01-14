@@ -9,19 +9,15 @@ WORKDIR /build
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
-    git-lfs \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Initialize git-lfs
-RUN git lfs install
-
 # Install uv for dependency management
 RUN pip install uv
 
-# Clone IndexTTS repository
-RUN git clone https://github.com/index-tts/index-tts.git /build/indextts
+# Clone IndexTTS repository (skip LFS files to avoid bandwidth limits)
+RUN GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/index-tts/index-tts.git /build/indextts
 
 WORKDIR /build/indextts
 
@@ -60,8 +56,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     libsndfile1 \
     ffmpeg \
-    git \
-    git-lfs \
     curl \
     && rm -rf /var/lib/apt/lists/* \
     && ln -s /usr/bin/python3.10 /usr/bin/python
