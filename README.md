@@ -8,7 +8,7 @@ Async TTS synthesis server based on [IndexTTS](https://github.com/index-tts/inde
 - REST API for submitting tasks and querying status
 - Docker deployment with GPU support
 - Voice cloning with reference audio
-- Emotion control support
+- Emotion control support (audio, text, and vector-based)
 
 ## Quick Start
 
@@ -78,9 +78,66 @@ curl -O http://localhost:8000/api/v1/results/{task_id}.wav
   "text": "Text to synthesize",
   "reference_audio": "/path/to/reference.wav",
   "emotion_prompt": "/path/to/emotion.wav",
-  "emotion_text": "happy"
+  "emotion_text": "happy",
+  "emotion_vector": [0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2],
+  "emotion_alpha": 1.0,
+  "use_emotion_text": false
 }
 ```
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `text` | string | **Required.** Text to synthesize (1-5000 chars) |
+| `reference_audio` | string | Path to reference audio for voice cloning |
+| `emotion_prompt` | string | Path to emotion reference audio |
+| `emotion_text` | string | Emotion description (e.g., "happy", "sad") |
+| `emotion_vector` | float[8] | Direct emotion control vector (see below) |
+| `emotion_alpha` | float | Emotion strength (0.0-2.0, default 1.0) |
+| `use_emotion_text` | bool | Auto-detect emotion from synthesis text |
+
+### Emotion Control Methods
+
+IndexTTS2 supports multiple emotion control methods:
+
+1. **Emotion Audio** (`emotion_prompt`): Use a reference audio to transfer emotion
+2. **Emotion Text** (`emotion_text`): Describe the emotion in text (e.g., "angry", "excited")
+3. **Emotion Vector** (`emotion_vector`): Direct 8-dimensional vector control
+4. **Auto-detect** (`use_emotion_text`): Automatically detect emotion from the synthesis text
+
+### Emotion Vector Format
+
+The `emotion_vector` is an 8-dimensional array where each value (0.0-1.0) represents emotion intensity:
+
+| Index | Emotion (EN) | Emotion (中文) |
+|-------|-------------|----------------|
+| 0 | Happy | 高兴 |
+| 1 | Angry | 愤怒 |
+| 2 | Sad | 悲伤 |
+| 3 | Afraid | 恐惧 |
+| 4 | Disgusted | 反感 |
+| 5 | Melancholic | 低落 |
+| 6 | Surprised | 惊讶 |
+| 7 | Calm | 平静/自然 |
+
+**Example vectors:**
+
+```json
+// Happy speech
+{"emotion_vector": [0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2]}
+
+// Angry speech
+{"emotion_vector": [0.0, 0.9, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0]}
+
+// Sad and melancholic
+{"emotion_vector": [0.0, 0.0, 0.6, 0.0, 0.0, 0.4, 0.0, 0.0]}
+
+// Calm/neutral (recommended for natural speech)
+{"emotion_vector": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]}
+```
+
+**Tips:**
+- Use `emotion_alpha` around 0.6 when using text-based emotion for more natural results
+- Multiple emotion values can be combined for complex emotional expressions
 
 ### Task Response
 

@@ -174,6 +174,12 @@ class TaskManager:
             kwargs["emo_audio_prompt"] = request.emotion_prompt
         if request.emotion_text:
             kwargs["emo_text"] = request.emotion_text
+        if request.emotion_vector is not None:
+            kwargs["emo_vector"] = request.emotion_vector
+        if request.emotion_alpha is not None:
+            kwargs["emo_alpha"] = request.emotion_alpha
+        if request.use_emotion_text is not None:
+            kwargs["use_emo_text"] = request.use_emotion_text
 
         self.tts_engine.infer(**kwargs)
 

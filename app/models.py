@@ -1,8 +1,8 @@
 """Data models for TTS server."""
 
 from enum import Enum
-from typing import Optional
-from pydantic import BaseModel, Field
+from typing import Optional, List
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 
 
@@ -29,6 +29,31 @@ class TTSRequest(BaseModel):
         None,
         description="Text description of desired emotion"
     )
+    emotion_vector: Optional[List[float]] = Field(
+        None,
+        description="8-dimensional emotion vector [happy, angry, sad, afraid, disgusted, melancholic, surprised, calm]. Each value should be 0.0-1.0"
+    )
+    emotion_alpha: Optional[float] = Field(
+        None,
+        ge=0.0,
+        le=2.0,
+        description="Emotion blending strength (0.0-2.0, default 1.0). Lower values (~0.6) recommended for text-based emotion"
+    )
+    use_emotion_text: Optional[bool] = Field(
+        None,
+        description="Auto-detect emotion from the synthesis text content"
+    )
+
+    @field_validator('emotion_vector')
+    @classmethod
+    def validate_emotion_vector(cls, v):
+        if v is not None:
+            if len(v) != 8:
+                raise ValueError('emotion_vector must have exactly 8 elements')
+            for i, val in enumerate(v):
+                if not 0.0 <= val <= 1.0:
+                    raise ValueError(f'emotion_vector[{i}] must be between 0.0 and 1.0')
+        return v
 
 
 class TaskInfo(BaseModel):
