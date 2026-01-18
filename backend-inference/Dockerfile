@@ -8,7 +8,6 @@ WORKDIR /build
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
     build-essential \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -16,8 +15,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install uv for dependency management
 RUN pip install uv
 
-# Clone IndexTTS repository (skip LFS files to avoid bandwidth limits)
-RUN GIT_LFS_SKIP_SMUDGE=1 git clone https://github.com/index-tts/index-tts.git /build/indextts
+# Copy IndexTTS repository from local
+COPY indextts /build/indextts
 
 WORKDIR /build/indextts
 
