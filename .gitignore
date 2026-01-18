@@ -212,3 +212,5 @@ outputs/
 references/
 *.wav
 *.mp3
+
+.DS_Store

@@ -1,0 +1,7 @@
+{
+  "name": "VoxClone 语音克隆工作站",
+  "description": "先进的语音克隆平台，利用 Gemini 的多模态能力，让用户能够高保真地复制任何音色并注入细腻情感。",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
