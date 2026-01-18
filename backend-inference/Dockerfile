@@ -26,7 +26,7 @@ RUN uv venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install PyTorch with CUDA support first
-RUN uv pip install torch==2.8.* torchaudio==2.8.* --index-url https://download.pytorch.org/whl/cu128
+RUN uv pip install torch==2.5.* torchaudio==2.5.* --index-url https://download.pytorch.org/whl/cu124
 
 # Install IndexTTS and dependencies
 RUN uv pip install -e . --no-deps
@@ -48,7 +48,7 @@ RUN uv pip install \
     aiofiles
 
 # Stage 2: Runtime image
-FROM nvidia/cuda:12.8.0-runtime-ubuntu22.04
+FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 
 # Install Python and runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
