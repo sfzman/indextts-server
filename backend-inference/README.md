@@ -141,9 +141,34 @@ openssl rsa -in private_key.pem -pubout -out public_key.pem
 
 2. Configure server with public key:
 
+**Local development:**
 ```bash
 export JWT_PUBLIC_KEY_PATH=/path/to/public_key.pem
 export JWT_MAX_AGE=10  # Token validity in seconds (default: 10)
+```
+
+**Docker deployment:**
+```bash
+docker run -d \
+  -p 8000:8000 \
+  -v /path/to/checkpoints:/app/checkpoints \
+  -v /path/to/public_key.pem:/app/keys/public_key.pem:ro \
+  -e JWT_PUBLIC_KEY_PATH=/app/keys/public_key.pem \
+  indextts-server
+```
+
+Or in `docker-compose.yml`:
+```yaml
+services:
+  indextts:
+    image: indextts-server
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./checkpoints:/app/checkpoints
+      - ./public_key.pem:/app/keys/public_key.pem:ro
+    environment:
+      - JWT_PUBLIC_KEY_PATH=/app/keys/public_key.pem
 ```
 
 3. Client generates JWT token with private key:
