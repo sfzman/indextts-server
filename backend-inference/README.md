@@ -1,14 +1,14 @@
 # IndexTTS Server
 
-Async TTS synthesis server based on [IndexTTS](https://github.com/index-tts/index-tts).
+Synchronous TTS synthesis server based on [IndexTTS](https://github.com/index-tts/index-tts).
 
 ## Features
 
-- Async task queue for handling multiple TTS requests
-- REST API for submitting tasks and querying status
+- Simple synchronous REST API for TTS synthesis
+- JWT RS256 authentication support
 - Docker deployment with GPU support
 - Voice cloning with reference audio
-- Emotion control support (audio, text, and vector-based)
+- Emotion control support (audio and vector-based)
 
 ## Quick Start
 
@@ -39,24 +39,11 @@ docker-compose -f docker-compose.cpu.yml up -d
 
 ### 3. Use the API
 
-**Submit TTS task:**
-
 ```bash
 curl -X POST http://localhost:8000/api/v1/tts \
   -H "Content-Type: application/json" \
-  -d '{"text": "Hello, this is a test."}'
-```
-
-**Query task status:**
-
-```bash
-curl http://localhost:8000/api/v1/tasks/{task_id}
-```
-
-**Download result:**
-
-```bash
-curl -O http://localhost:8000/api/v1/results/{task_id}.wav
+  -d '{"text": "Hello, this is a test."}' \
+  --output output.wav
 ```
 
 ## API Reference
@@ -66,10 +53,7 @@ curl -O http://localhost:8000/api/v1/results/{task_id}.wav
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/health` | Health check |
-| POST | `/api/v1/tts` | Submit TTS task |
-| GET | `/api/v1/tasks/{task_id}` | Get task status |
-| GET | `/api/v1/results/{filename}` | Download result |
-| DELETE | `/api/v1/tasks/{task_id}` | Delete task |
+| POST | `/api/v1/tts` | Synthesize speech (returns WAV audio) |
 
 ### TTS Request Body
 
@@ -78,7 +62,6 @@ curl -O http://localhost:8000/api/v1/results/{task_id}.wav
   "text": "Text to synthesize",
   "reference_audio": "/path/to/reference.wav",
   "emotion_prompt": "/path/to/emotion.wav",
-  "emotion_text": "happy",
   "emotion_vector": [0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2],
   "emotion_alpha": 1.0,
   "use_emotion_text": false
@@ -90,19 +73,21 @@ curl -O http://localhost:8000/api/v1/results/{task_id}.wav
 | `text` | string | **Required.** Text to synthesize (1-5000 chars) |
 | `reference_audio` | string | Path to reference audio for voice cloning |
 | `emotion_prompt` | string | Path to emotion reference audio |
-| `emotion_text` | string | Emotion description (e.g., "happy", "sad") |
 | `emotion_vector` | float[8] | Direct emotion control vector (see below) |
 | `emotion_alpha` | float | Emotion strength (0.0-2.0, default 1.0) |
 | `use_emotion_text` | bool | Auto-detect emotion from synthesis text |
+
+### TTS Response
+
+The API returns the synthesized audio directly as a WAV file (`audio/wav`).
 
 ### Emotion Control Methods
 
 IndexTTS2 supports multiple emotion control methods:
 
 1. **Emotion Audio** (`emotion_prompt`): Use a reference audio to transfer emotion
-2. **Emotion Text** (`emotion_text`): Describe the emotion in text (e.g., "angry", "excited")
-3. **Emotion Vector** (`emotion_vector`): Direct 8-dimensional vector control
-4. **Auto-detect** (`use_emotion_text`): Automatically detect emotion from the synthesis text
+2. **Emotion Vector** (`emotion_vector`): Direct 8-dimensional vector control
+3. **Auto-detect** (`use_emotion_text`): Automatically detect emotion from the synthesis text
 
 ### Emotion Vector Format
 
@@ -136,23 +121,58 @@ The `emotion_vector` is an 8-dimensional array where each value (0.0-1.0) repres
 ```
 
 **Tips:**
-- Use `emotion_alpha` around 0.6 when using text-based emotion for more natural results
 - Multiple emotion values can be combined for complex emotional expressions
 
-### Task Response
+## Authentication
 
-```json
-{
-  "task_id": "uuid",
-  "status": "pending|processing|completed|failed",
-  "created_at": "2024-01-01T00:00:00",
-  "started_at": "2024-01-01T00:00:01",
-  "completed_at": "2024-01-01T00:00:10",
-  "error_message": null,
-  "result_url": "/api/v1/results/uuid.wav",
-  "progress": 100.0
-}
+The server supports JWT RS256 authentication. When enabled, all requests (except `/health`) require a valid JWT token.
+
+### Setup
+
+1. Generate RSA key pair:
+
+```bash
+# Generate private key (keep this secret, used by client)
+openssl genrsa -out private_key.pem 2048
+
+# Extract public key (used by server)
+openssl rsa -in private_key.pem -pubout -out public_key.pem
 ```
+
+2. Configure server with public key:
+
+```bash
+export JWT_PUBLIC_KEY_PATH=/path/to/public_key.pem
+export JWT_MAX_AGE=10  # Token validity in seconds (default: 10)
+```
+
+3. Client generates JWT token with private key:
+
+```python
+import jwt
+import time
+
+private_key = open("private_key.pem").read()
+
+token = jwt.encode(
+    {"exp": int(time.time()) + 10},  # Expires in 10 seconds
+    private_key,
+    algorithm="RS256"
+)
+print(token)
+```
+
+4. Call API with token:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/tts \
+  -H "Authorization: Bearer <jwt_token>" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Hello, this is a test."}' \
+  --output output.wav
+```
+
+**Note:** If `JWT_PUBLIC_KEY_PATH` is not set, authentication is disabled.
 
 ## Configuration
 
@@ -162,11 +182,11 @@ Environment variables:
 |----------|---------|-------------|
 | `HOST` | `0.0.0.0` | Server host |
 | `PORT` | `8000` | Server port |
+| `WORKERS` | `1` | Number of workers |
 | `MODEL_DIR` | `/app/checkpoints` | Model directory |
-| `OUTPUT_DIR` | `/app/outputs` | Output directory |
-| `MAX_QUEUE_SIZE` | `100` | Max pending tasks |
-| `TASK_TIMEOUT` | `300` | Task timeout (seconds) |
-| `DOWNLOAD_MODEL` | `false` | Auto-download model |
+| `DEFAULT_REFERENCE` | `examples/voice.wav` | Default reference audio |
+| `JWT_PUBLIC_KEY_PATH` | `` | Path to RSA public key (empty = auth disabled) |
+| `JWT_MAX_AGE` | `10` | Max token age in seconds |
 
 ## Development
 

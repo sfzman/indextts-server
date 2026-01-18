@@ -9,6 +9,9 @@ aiofiles>=23.0.0
 # Data validation
 pydantic>=2.0.0
 
+# JWT authentication
+PyJWT[crypto]>=2.8.0
+
 # ML dependencies (installed separately for CUDA support)
 # torch>=2.0.0
 # torchaudio>=2.0.0
