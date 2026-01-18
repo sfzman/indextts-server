@@ -139,11 +139,11 @@ openssl genrsa -out private_key.pem 2048
 openssl rsa -in private_key.pem -pubout -out public_key.pem
 ```
 
-2. Configure server with public key:
+2. Configure server with public key via environment variable:
 
-**Local development:**
 ```bash
-export JWT_PUBLIC_KEY_PATH=/path/to/public_key.pem
+# Read public key and set as environment variable (replace newlines with \n)
+export JWT_PUBLIC_KEY=$(cat public_key.pem | sed ':a;N;$!ba;s/\n/\\n/g')
 export JWT_MAX_AGE=10  # Token validity in seconds (default: 10)
 ```
 
@@ -152,8 +152,7 @@ export JWT_MAX_AGE=10  # Token validity in seconds (default: 10)
 docker run -d \
   -p 8000:8000 \
   -v /path/to/checkpoints:/app/checkpoints \
-  -v /path/to/public_key.pem:/app/keys/public_key.pem:ro \
-  -e JWT_PUBLIC_KEY_PATH=/app/keys/public_key.pem \
+  -e JWT_PUBLIC_KEY="$(cat public_key.pem | sed ':a;N;$!ba;s/\n/\\n/g')" \
   indextts-server
 ```
 
@@ -166,9 +165,8 @@ services:
       - "8000:8000"
     volumes:
       - ./checkpoints:/app/checkpoints
-      - ./public_key.pem:/app/keys/public_key.pem:ro
     environment:
-      - JWT_PUBLIC_KEY_PATH=/app/keys/public_key.pem
+      - JWT_PUBLIC_KEY=-----BEGIN PUBLIC KEY-----\nMIIBI...(your key)...\n-----END PUBLIC KEY-----
 ```
 
 3. Client generates JWT token with private key:
@@ -197,7 +195,7 @@ curl -X POST http://localhost:8000/api/v1/tts \
   --output output.wav
 ```
 
-**Note:** If `JWT_PUBLIC_KEY_PATH` is not set, authentication is disabled.
+**Note:** If `JWT_PUBLIC_KEY` is not set, authentication is disabled.
 
 ## Configuration
 
@@ -210,7 +208,7 @@ Environment variables:
 | `WORKERS` | `1` | Number of workers |
 | `MODEL_DIR` | `/app/checkpoints` | Model directory |
 | `DEFAULT_REFERENCE` | `examples/voice.wav` | Default reference audio |
-| `JWT_PUBLIC_KEY_PATH` | `` | Path to RSA public key (empty = auth disabled) |
+| `JWT_PUBLIC_KEY` | `` | RSA public key content (use `\n` for newlines, empty = auth disabled) |
 | `JWT_MAX_AGE` | `10` | Max token age in seconds |
 
 ## Development
@@ -228,7 +226,7 @@ python -m uvicorn app.main:app --reload
 ### Build Docker Image
 
 ```bash
-docker build -t indextts-server .
+docker build -t indextts-inference-server .
 ```
 
 ## License

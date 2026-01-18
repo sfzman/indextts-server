@@ -20,7 +20,7 @@ class Settings:
     DEFAULT_REFERENCE: str = os.getenv("DEFAULT_REFERENCE", "examples/voice.wav")
 
     # JWT authentication settings
-    JWT_PUBLIC_KEY_PATH: str = os.getenv("JWT_PUBLIC_KEY_PATH", "")
+    JWT_PUBLIC_KEY: str = os.getenv("JWT_PUBLIC_KEY", "").replace("\\n", "\n")
     JWT_MAX_AGE: int = int(os.getenv("JWT_MAX_AGE", "10"))  # seconds
 
 

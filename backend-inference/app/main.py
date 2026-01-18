@@ -25,15 +25,10 @@ logger = logging.getLogger(__name__)
 # Global TTS engine
 tts_engine = None
 
-# Load JWT public key
-jwt_public_key = None
-if settings.JWT_PUBLIC_KEY_PATH:
-    try:
-        with open(settings.JWT_PUBLIC_KEY_PATH, "r") as f:
-            jwt_public_key = f.read()
-        logger.info("JWT public key loaded successfully")
-    except Exception as e:
-        logger.error(f"Failed to load JWT public key: {e}")
+# Load JWT public key from environment variable
+jwt_public_key = settings.JWT_PUBLIC_KEY if settings.JWT_PUBLIC_KEY else None
+if jwt_public_key:
+    logger.info("JWT authentication enabled")
 
 
 def load_model():
