@@ -1,7 +1,7 @@
 import os
 from subprocess import CalledProcessError
 
-os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'
+# os.environ['HF_HUB_CACHE'] = './checkpoints/hf_cache'  # Use global HF cache
 import json
 import re
 import time

@@ -6,7 +6,12 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env file if it exists
-load_dotenv()
+env_path = Path(__file__).parent.parent / ".env"
+loaded = load_dotenv(env_path)
+print(f"[DEBUG] .env path: {env_path}")
+print(f"[DEBUG] .env exists: {env_path.exists()}")
+print(f"[DEBUG] .env loaded: {loaded}")
+print(f"[DEBUG] MODEL_DIR from env: {os.getenv('MODEL_DIR')}")
 
 
 class Settings:
