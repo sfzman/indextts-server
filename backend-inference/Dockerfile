@@ -25,7 +25,7 @@ RUN uv venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Install PyTorch with CUDA support first
-RUN uv pip install torch==2.8.* torchaudio==2.8.* --index-url https://download.pytorch.org/whl/cu128
+RUN uv pip install torch==2.8.* torchaudio==2.8.* torchvision==0.23.* --index-url https://download.pytorch.org/whl/cu128
 
 # Install IndexTTS and dependencies
 RUN uv pip install -e . --no-deps

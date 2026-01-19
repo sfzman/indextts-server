@@ -211,6 +211,98 @@ Environment variables:
 | `JWT_PUBLIC_KEY` | `` | RSA public key content (use `\n` for newlines, empty = auth disabled) |
 | `JWT_MAX_AGE` | `10` | Max token age in seconds |
 
+## Server Deployment (without Docker)
+
+For deploying on a bare server with GPU:
+
+### 1. System Requirements
+
+- Python 3.10+
+- NVIDIA GPU with CUDA support
+- ~10GB disk space for models
+
+### 2. Clone and Setup
+
+```bash
+git clone <your-repo-url>
+cd backend-inference
+
+# Install uv (recommended for faster installation)
+pip install uv
+
+# Install the indextts package
+uv pip install -e ./indextts
+
+# Install other dependencies
+uv pip install -r requirements.txt
+```
+
+### 3. Download Model
+
+```bash
+# Install huggingface-cli if not already installed
+pip install huggingface_hub
+
+# Download IndexTTS model (~5GB)
+huggingface-cli download IndexTeam/IndexTTS-2 --local-dir=checkpoints
+```
+
+After download, verify the directory structure:
+```
+checkpoints/
+├── config.yaml
+├── bpe.model
+├── gpt.pth
+├── s2mel.pth
+├── feat1.pt
+├── feat2.pt
+├── pinyin.vocab
+├── wav2vec2bert_stats.pt
+└── qwen0.6bemo4-merge/
+```
+
+### 4. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env as needed (MODEL_DIR, PORT, etc.)
+```
+
+### 5. Start Server
+
+```bash
+# Development mode (with auto-reload)
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+# Production mode
+python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+```
+
+### 6. Run as systemd service (optional)
+
+Create `/etc/systemd/system/indextts.service`:
+```ini
+[Unit]
+Description=IndexTTS Server
+After=network.target
+
+[Service]
+User=<your-user>
+WorkingDirectory=/path/to/backend-inference
+Environment="PATH=/path/to/your/venv/bin"
+ExecStart=/path/to/your/venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Then enable and start:
+```bash
+sudo systemctl enable indextts
+sudo systemctl start indextts
+```
+
 ## Development
 
 ### Local Setup
@@ -224,6 +316,9 @@ uv pip install -e ./indextts
 
 # Install other dependencies
 uv pip install -r requirements.txt
+
+# Download model (if not already done)
+huggingface-cli download IndexTeam/IndexTTS-2 --local-dir=checkpoints
 
 # Run server
 python -m uvicorn app.main:app --reload
