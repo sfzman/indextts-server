@@ -3,6 +3,11 @@
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# Load .env file if it exists
+load_dotenv()
+
 
 class Settings:
     """Server configuration settings."""

@@ -216,12 +216,17 @@ Environment variables:
 ### Local Setup
 
 ```bash
-# Install dependencies
+# Install the indextts package (required)
+pip install -e ./indextts
+
+# Install other dependencies
 pip install -r requirements.txt
 
 # Run server
 python -m uvicorn app.main:app --reload
 ```
+
+> **Note:** The `indextts` folder contains the IndexTTS library source code. You must install it as a Python package using `pip install -e ./indextts` before running the server locally.
 
 ### Build Docker Image
 
