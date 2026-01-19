@@ -5,7 +5,9 @@ import logging
 import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Optional
 
+import httpx
 import jwt
 import torch
 from fastapi import FastAPI, HTTPException, Request
@@ -50,6 +52,25 @@ def load_model():
 def is_model_loaded() -> bool:
     """Check if model is loaded."""
     return tts_engine is not None
+
+
+async def download_audio(url: str) -> str:
+    """Download audio from URL to a temporary file.
+
+    Returns the path to the temporary file.
+    """
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.get(url)
+        response.raise_for_status()
+
+        # Determine file extension from URL or content-type
+        suffix = ".wav"
+        if url.lower().endswith((".mp3", ".wav", ".flac", ".ogg")):
+            suffix = Path(url).suffix.lower()
+
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp_file:
+            tmp_file.write(response.content)
+            return tmp_file.name
 
 
 @asynccontextmanager
@@ -153,17 +174,29 @@ async def synthesize(request: TTSRequest):
             detail="TTS model not loaded. Server is not ready."
         )
 
-    # Determine reference audio
-    reference_audio = request.reference_audio
-    if not reference_audio:
-        reference_audio = str(settings.MODEL_DIR / settings.DEFAULT_REFERENCE)
-
     logger.info(f"Synthesizing: {request.text[:50]}...")
 
+    # Track temp files for cleanup
+    temp_files = []
+
     try:
+        # Download reference audio from URL or use default
+        if request.reference_audio:
+            reference_audio = await download_audio(request.reference_audio)
+            temp_files.append(reference_audio)
+        else:
+            reference_audio = str(settings.MODEL_DIR / settings.DEFAULT_REFERENCE)
+
+        # Download emotion prompt from URL if provided
+        emotion_prompt_path = None
+        if request.emotion_prompt:
+            emotion_prompt_path = await download_audio(request.emotion_prompt)
+            temp_files.append(emotion_prompt_path)
+
         # Create a temporary file for output
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
             output_path = tmp_file.name
+            temp_files.append(output_path)
 
         # Build inference kwargs
         kwargs = {
@@ -173,8 +206,8 @@ async def synthesize(request: TTSRequest):
         }
 
         # Add optional emotion parameters
-        if request.emotion_prompt:
-            kwargs["emo_audio_prompt"] = request.emotion_prompt
+        if emotion_prompt_path:
+            kwargs["emo_audio_prompt"] = emotion_prompt_path
         if request.emotion_vector is not None:
             kwargs["emo_vector"] = request.emotion_vector
         if request.emotion_alpha is not None:
@@ -189,9 +222,6 @@ async def synthesize(request: TTSRequest):
         with open(output_path, "rb") as f:
             audio_data = f.read()
 
-        # Clean up temp file
-        Path(output_path).unlink(missing_ok=True)
-
         logger.info("Synthesis completed successfully")
 
         return StreamingResponse(
@@ -200,15 +230,22 @@ async def synthesize(request: TTSRequest):
             headers={"Content-Disposition": "attachment; filename=output.wav"}
         )
 
+    except httpx.HTTPError as e:
+        logger.error(f"Failed to download audio: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Failed to download audio from URL: {str(e)}"
+        )
     except Exception as e:
         logger.error(f"Synthesis failed: {e}")
-        # Clean up temp file on error
-        if 'output_path' in locals():
-            Path(output_path).unlink(missing_ok=True)
         raise HTTPException(
             status_code=500,
             detail=f"Synthesis failed: {str(e)}"
         )
+    finally:
+        # Clean up all temp files
+        for temp_file in temp_files:
+            Path(temp_file).unlink(missing_ok=True)
 
 
 if __name__ == "__main__":

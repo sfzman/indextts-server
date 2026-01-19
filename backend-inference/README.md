@@ -60,8 +60,8 @@ curl -X POST http://localhost:8000/api/v1/tts \
 ```json
 {
   "text": "Text to synthesize",
-  "reference_audio": "/path/to/reference.wav",
-  "emotion_prompt": "/path/to/emotion.wav",
+  "reference_audio": "https://example.com/voice.wav",
+  "emotion_prompt": "https://example.com/emotion.wav",
   "emotion_vector": [0.8, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.2],
   "emotion_alpha": 1.0,
   "use_emotion_text": false
@@ -71,8 +71,8 @@ curl -X POST http://localhost:8000/api/v1/tts \
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `text` | string | **Required.** Text to synthesize (1-5000 chars) |
-| `reference_audio` | string | Path to reference audio for voice cloning |
-| `emotion_prompt` | string | Path to emotion reference audio |
+| `reference_audio` | string | URL to reference audio for voice cloning (WAV recommended) |
+| `emotion_prompt` | string | URL to emotion reference audio (WAV recommended) |
 | `emotion_vector` | float[8] | Direct emotion control vector (see below) |
 | `emotion_alpha` | float | Emotion strength (0.0-2.0, default 1.0) |
 | `use_emotion_text` | bool | Auto-detect emotion from synthesis text |

@@ -9,11 +9,11 @@ class TTSRequest(BaseModel):
     text: str = Field(..., description="Text to synthesize", min_length=1, max_length=5000)
     reference_audio: Optional[str] = Field(
         None,
-        description="Path or URL to reference audio for voice cloning"
+        description="URL to reference audio for voice cloning (WAV format recommended)"
     )
     emotion_prompt: Optional[str] = Field(
         None,
-        description="Emotion audio prompt path for emotional control"
+        description="URL to emotion audio prompt for emotional control (WAV format recommended)"
     )
     emotion_vector: Optional[List[float]] = Field(
         None,
