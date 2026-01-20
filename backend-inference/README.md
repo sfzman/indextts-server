@@ -230,6 +230,10 @@ cd backend-inference
 # Install uv (recommended for faster installation)
 pip install uv
 
+# Create and activate virtual environment
+uv venv .venv
+source .venv/bin/activate
+
 # Install the indextts package
 uv pip install -e ./indextts
 
@@ -311,6 +315,10 @@ sudo systemctl start indextts
 # Install uv (if not already installed)
 pip install uv
 
+# Create and activate virtual environment
+uv venv .venv
+source .venv/bin/activate
+
 # Install the indextts package (required)
 uv pip install -e ./indextts
 
@@ -324,7 +332,7 @@ huggingface-cli download IndexTeam/IndexTTS-2 --local-dir=checkpoints
 python -m uvicorn app.main:app --reload
 ```
 
-> **Note:** The `indextts` folder contains the IndexTTS library source code. You must install it as a Python package before running the server locally. Using `uv` is recommended for faster installation.
+> **Note:** The `indextts` folder contains the IndexTTS library source code. You must install it as a Python package before running the server locally. Using `uv` with a virtual environment is recommended.
 
 ### Build Docker Image
 
