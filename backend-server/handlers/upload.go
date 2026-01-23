@@ -5,9 +5,11 @@ import (
 	"path/filepath"
 	"strings"
 
+	"backend-server/models"
 	"backend-server/services"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 )
 
 // allowedAudioExtensions defines allowed audio file extensions
@@ -70,7 +72,7 @@ func UploadAudio(c *gin.Context) {
 	}
 
 	// Upload to OSS
-	url, err := services.UploadFile(src, file.Filename, contentType)
+	ossKey, err := services.UploadFile(src, file.Filename, contentType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
 			"error": "Failed to upload file: " + err.Error(),
@@ -78,7 +80,25 @@ func UploadAudio(c *gin.Context) {
 		return
 	}
 
+	// Create file record in database
+	fileRecord := models.File{
+		ID:          uuid.New().String(),
+		Filename:    file.Filename,
+		OSSKey:      ossKey,
+		ContentType: contentType,
+		Size:        file.Size,
+	}
+
+	if err := models.DB.Create(&fileRecord).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to save file record: " + err.Error(),
+		})
+		return
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"url": url,
+		"id":       fileRecord.ID,
+		"filename": fileRecord.Filename,
+		"size":     fileRecord.Size,
 	})
 }

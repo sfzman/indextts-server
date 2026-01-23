@@ -33,7 +33,7 @@ func InitDB() error {
 	}
 
 	// Auto migrate
-	if err := DB.AutoMigrate(&Task{}); err != nil {
+	if err := DB.AutoMigrate(&Task{}, &File{}); err != nil {
 		return fmt.Errorf("failed to migrate database: %w", err)
 	}
 

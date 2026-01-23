@@ -68,6 +68,10 @@ func main() {
 		// Upload
 		api.POST("/upload", handlers.UploadAudio)
 
+		// Files
+		api.GET("/files/:id", handlers.GetFile)
+		api.GET("/files/:id/url", handlers.GetFileURL)
+
 		// Tasks
 		api.POST("/tasks", handlers.CreateTask)
 		api.GET("/tasks", handlers.ListTasks)

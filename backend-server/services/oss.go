@@ -33,11 +33,11 @@ func InitOSS() error {
 	return nil
 }
 
-// UploadFile uploads a file to OSS and returns the public URL
+// UploadFile uploads a file to OSS and returns the object key (not public URL)
 func UploadFile(reader io.Reader, filename string, contentType string) (string, error) {
 	// Generate unique object key
 	ext := path.Ext(filename)
-	objectKey := fmt.Sprintf("audio/%s/%s%s",
+	objectKey := fmt.Sprintf("indextts/audio/%s/%s%s",
 		time.Now().Format("2006/01/02"),
 		uuid.New().String(),
 		ext,
@@ -49,17 +49,28 @@ func UploadFile(reader io.Reader, filename string, contentType string) (string, 
 		return "", fmt.Errorf("failed to upload to OSS: %w", err)
 	}
 
-	// Generate public URL
-	cfg := config.Cfg
-	url := fmt.Sprintf("https://%s.%s/%s", cfg.OSSBucketName, cfg.OSSEndpoint, objectKey)
-
-	return url, nil
+	return objectKey, nil
 }
 
-// UploadBytes uploads byte data to OSS
+// GetSignedURL generates a signed URL for accessing a private OSS object
+// expireSeconds specifies how long the URL will be valid (default 3600 seconds = 1 hour)
+func GetSignedURL(objectKey string, expireSeconds int64) (string, error) {
+	if expireSeconds <= 0 {
+		expireSeconds = 3600 // default 1 hour
+	}
+
+	signedURL, err := ossBucket.SignURL(objectKey, oss.HTTPGet, expireSeconds)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate signed URL: %w", err)
+	}
+
+	return signedURL, nil
+}
+
+// UploadBytes uploads byte data to OSS and returns the object key
 func UploadBytes(data []byte, filename string, contentType string) (string, error) {
 	ext := path.Ext(filename)
-	objectKey := fmt.Sprintf("audio/%s/%s%s",
+	objectKey := fmt.Sprintf("indextts/audio/%s/%s%s",
 		time.Now().Format("2006/01/02"),
 		uuid.New().String(),
 		ext,
@@ -72,10 +83,7 @@ func UploadBytes(data []byte, filename string, contentType string) (string, erro
 		return "", fmt.Errorf("failed to upload to OSS: %w", err)
 	}
 
-	cfg := config.Cfg
-	url := fmt.Sprintf("https://%s.%s/%s", cfg.OSSBucketName, cfg.OSSEndpoint, objectKey)
-
-	return url, nil
+	return objectKey, nil
 }
 
 // bytesReader implements io.Reader for byte slice
@@ -91,4 +99,9 @@ func (r *bytesReader) Read(p []byte) (n int, err error) {
 	n = copy(p, r.data[r.offset:])
 	r.offset += n
 	return n, nil
+}
+
+// GetObject retrieves an object from OSS and returns a reader
+func GetObject(objectKey string) (io.ReadCloser, error) {
+	return ossBucket.GetObject(objectKey)
 }

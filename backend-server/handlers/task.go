@@ -12,12 +12,12 @@ import (
 
 // CreateTaskRequest represents the request to create a new task
 type CreateTaskRequest struct {
-	Text              string   `json:"text" binding:"required,min=1,max=5000"`
-	ReferenceAudioURL string   `json:"reference_audio_url" binding:"required,url"`
-	EmotionMode       string   `json:"emotion_mode" binding:"required,oneof=same_as_reference emotion_prompt emotion_vector emotion_text"`
-	EmotionPromptURL  string   `json:"emotion_prompt_url" binding:"omitempty,url"`
-	EmotionVector     []float64 `json:"emotion_vector" binding:"omitempty,len=8"`
-	EmotionAlpha      *float64 `json:"emotion_alpha" binding:"omitempty,min=0,max=2"`
+	Text                 string    `json:"text" binding:"required,min=1,max=5000"`
+	ReferenceAudioFileID string    `json:"reference_audio_file_id" binding:"required,len=36"`
+	EmotionMode          string    `json:"emotion_mode" binding:"required,oneof=same_as_reference emotion_prompt emotion_vector emotion_text"`
+	EmotionPromptFileID  string    `json:"emotion_prompt_file_id" binding:"omitempty,len=36"`
+	EmotionVector        []float64 `json:"emotion_vector" binding:"omitempty,len=8"`
+	EmotionAlpha         *float64  `json:"emotion_alpha" binding:"omitempty,min=0,max=1"`
 }
 
 // CreateTask creates a new TTS task
@@ -30,12 +30,29 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
+	// Validate reference audio file exists
+	var refFile models.File
+	if err := models.DB.First(&refFile, "id = ?", req.ReferenceAudioFileID).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": "Reference audio file not found",
+		})
+		return
+	}
+
 	// Validate emotion mode parameters
 	switch models.EmotionMode(req.EmotionMode) {
 	case models.EmotionModePrompt:
-		if req.EmotionPromptURL == "" {
+		if req.EmotionPromptFileID == "" {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "emotion_prompt_url is required when emotion_mode is emotion_prompt",
+				"error": "emotion_prompt_file_id is required when emotion_mode is emotion_prompt",
+			})
+			return
+		}
+		// Validate emotion prompt file exists
+		var emotionFile models.File
+		if err := models.DB.First(&emotionFile, "id = ?", req.EmotionPromptFileID).Error; err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "Emotion prompt file not found",
 			})
 			return
 		}
@@ -60,13 +77,13 @@ func CreateTask(c *gin.Context) {
 
 	// Create task
 	task := models.Task{
-		ID:                uuid.New().String(),
-		Status:            models.TaskStatusPending,
-		Text:              req.Text,
-		ReferenceAudioURL: req.ReferenceAudioURL,
-		EmotionMode:       models.EmotionMode(req.EmotionMode),
-		EmotionPromptURL:  req.EmotionPromptURL,
-		EmotionAlpha:      req.EmotionAlpha,
+		ID:                   uuid.New().String(),
+		Status:               models.TaskStatusPending,
+		Text:                 req.Text,
+		ReferenceAudioFileID: req.ReferenceAudioFileID,
+		EmotionMode:          models.EmotionMode(req.EmotionMode),
+		EmotionPromptFileID:  req.EmotionPromptFileID,
+		EmotionAlpha:         req.EmotionAlpha,
 	}
 
 	// Store emotion vector as JSON string
@@ -90,6 +107,22 @@ func CreateTask(c *gin.Context) {
 	})
 }
 
+// TaskResponse represents the response for a task
+type TaskResponse struct {
+	ID                   string             `json:"id"`
+	Status               models.TaskStatus  `json:"status"`
+	Text                 string             `json:"text"`
+	ReferenceAudioFileID string             `json:"reference_audio_file_id"`
+	EmotionMode          models.EmotionMode `json:"emotion_mode"`
+	EmotionPromptFileID  string             `json:"emotion_prompt_file_id,omitempty"`
+	EmotionVector        string             `json:"emotion_vector,omitempty"`
+	EmotionAlpha         *float64           `json:"emotion_alpha,omitempty"`
+	ResultAudioFileID    string             `json:"result_audio_file_id,omitempty"`
+	ErrorMessage         string             `json:"error_message,omitempty"`
+	CreatedAt            string             `json:"created_at"`
+	UpdatedAt            string             `json:"updated_at"`
+}
+
 // GetTask retrieves a task by ID
 func GetTask(c *gin.Context) {
 	id := c.Param("id")
@@ -102,7 +135,37 @@ func GetTask(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, task)
+	// Build response with file IDs (no sensitive OSS keys)
+	resp := TaskResponse{
+		ID:                   task.ID,
+		Status:               task.Status,
+		Text:                 task.Text,
+		ReferenceAudioFileID: task.ReferenceAudioFileID,
+		EmotionMode:          task.EmotionMode,
+		EmotionPromptFileID:  task.EmotionPromptFileID,
+		EmotionVector:        task.EmotionVector,
+		EmotionAlpha:         task.EmotionAlpha,
+		ResultAudioFileID:    task.ResultAudioFileID,
+		ErrorMessage:         task.ErrorMessage,
+		CreatedAt:            task.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		UpdatedAt:            task.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+	}
+
+	c.JSON(http.StatusOK, resp)
+}
+
+// TaskListItem represents a task item in list response (without sensitive data)
+type TaskListItem struct {
+	ID                   string             `json:"id"`
+	Status               models.TaskStatus  `json:"status"`
+	Text                 string             `json:"text"`
+	ReferenceAudioFileID string             `json:"reference_audio_file_id"`
+	EmotionMode          models.EmotionMode `json:"emotion_mode"`
+	EmotionPromptFileID  string             `json:"emotion_prompt_file_id,omitempty"`
+	ResultAudioFileID    string             `json:"result_audio_file_id,omitempty"`
+	ErrorMessage         string             `json:"error_message,omitempty"`
+	CreatedAt            string             `json:"created_at"`
+	UpdatedAt            string             `json:"updated_at"`
 }
 
 // ListTasks lists tasks with pagination
@@ -146,8 +209,25 @@ func ListTasks(c *gin.Context) {
 
 	query.Order("created_at DESC").Offset(offset).Limit(pageSize).Find(&tasks)
 
+	// Convert to response items (without sensitive OSS keys)
+	items := make([]TaskListItem, len(tasks))
+	for i, task := range tasks {
+		items[i] = TaskListItem{
+			ID:                   task.ID,
+			Status:               task.Status,
+			Text:                 task.Text,
+			ReferenceAudioFileID: task.ReferenceAudioFileID,
+			EmotionMode:          task.EmotionMode,
+			EmotionPromptFileID:  task.EmotionPromptFileID,
+			ResultAudioFileID:    task.ResultAudioFileID,
+			ErrorMessage:         task.ErrorMessage,
+			CreatedAt:            task.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
+			UpdatedAt:            task.UpdatedAt.Format("2006-01-02T15:04:05Z07:00"),
+		}
+	}
+
 	c.JSON(http.StatusOK, gin.H{
-		"tasks":     tasks,
+		"tasks":     items,
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
