@@ -19,11 +19,11 @@ on:
           - staging
 
 env:
-  REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
-  ACR_REGISTRY: ${{ vars.ALIYUN_ACR_REGISTRY }}
-  ACR_NAMESPACE: ${{ vars.ALIYUN_ACR_NAMESPACE }}
+  REGION: ${{ secrets.ALIYUN_REGION }}
+  ACR_REGISTRY: registry.${{ secrets.ALIYUN_REGION }}.aliyuncs.com
+  ACR_NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
   IMAGE_NAME: indextts-backend-server
-  SAE_APP_ID: ${{ vars.SAE_BACKEND_SERVER_APP_ID }}
+  SAE_APP_ID: ${{ secrets.SAE_BACKEND_SERVER_APP_ID }}
 
 jobs:
   build-and-deploy:

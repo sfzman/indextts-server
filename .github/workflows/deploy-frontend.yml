@@ -19,11 +19,11 @@ on:
           - staging
 
 env:
-  REGION: ${{ vars.ALIYUN_REGION || 'cn-beijing' }}
-  ACR_REGISTRY: ${{ vars.ALIYUN_ACR_REGISTRY }}
-  ACR_NAMESPACE: ${{ vars.ALIYUN_ACR_NAMESPACE }}
+  REGION: ${{ secrets.ALIYUN_REGION }}
+  ACR_REGISTRY: registry.${{ secrets.ALIYUN_REGION }}.aliyuncs.com
+  ACR_NAMESPACE: ${{ secrets.ALIYUN_ACR_NAMESPACE }}
   IMAGE_NAME: indextts-frontend
-  SAE_APP_ID: ${{ vars.SAE_FRONTEND_APP_ID }}
+  SAE_APP_ID: ${{ secrets.SAE_FRONTEND_APP_ID }}
 
 jobs:
   build-and-deploy:
@@ -63,7 +63,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
+            VITE_API_BASE_URL=${{ secrets.VITE_API_BASE_URL }}
 
       - name: Setup Aliyun CLI
         uses: aliyun/setup-aliyun-cli-action@v1

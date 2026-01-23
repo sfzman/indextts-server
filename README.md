@@ -110,21 +110,13 @@
 | `ALIYUN_ACCESS_KEY_SECRET` | RAM 用户的 AccessKey Secret | `xxxxxxxxxxxxxxxxxx` |
 | `ALIYUN_ACR_USERNAME` | ACR 登录用户名（阿里云账号全名） | `your-aliyun-account` |
 | `ALIYUN_ACR_PASSWORD` | ACR 登录密码（在 ACR 控制台设置） | `your-acr-password` |
-
-#### 2. 配置 Repository Variables
-
-在 GitHub 仓库的 `Settings > Secrets and variables > Actions > Variables` 中添加：
-
-| Variable 名称 | 说明 | 示例 |
-|--------------|------|-----|
 | `ALIYUN_REGION` | 阿里云地域 | `cn-beijing` |
-| `ALIYUN_ACR_REGISTRY` | ACR Registry 地址 | `registry.cn-beijing.aliyuncs.com` |
 | `ALIYUN_ACR_NAMESPACE` | ACR 命名空间 | `indextts` |
 | `SAE_FRONTEND_APP_ID` | Frontend SAE 应用 ID | `xxx-xxx-xxx` |
 | `SAE_BACKEND_SERVER_APP_ID` | Backend Server SAE 应用 ID | `xxx-xxx-xxx` |
 | `VITE_API_BASE_URL` | 后端 API 地址（供前端调用） | `https://api.example.com` |
 
-#### 3. 触发部署
+#### 2. 触发部署
 
 部署会在以下情况自动触发：
 
@@ -174,7 +166,7 @@
 - [ ] 创建 SAE 应用并获取应用 ID
 - [ ] 创建 RDS MySQL 数据库
 - [ ] 创建 OSS Bucket
-- [ ] 配置 GitHub Secrets 和 Variables
+- [ ] 配置 GitHub Secrets
 - [ ] 为 SAE 应用配置环境变量
 
 #### 部署后
