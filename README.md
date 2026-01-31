@@ -54,6 +54,7 @@
 3. 为用户授予以下权限策略：
    - `AliyunContainerRegistryFullAccess` - ACR 完全访问权限
    - `AliyunSAEFullAccess` - SAE 完全访问权限
+   - `AliyunDysmsFullAccess` - 短信服务完全访问权限（用于用户登录验证码）
 4. 创建并保存 AccessKey ID 和 AccessKey Secret
 
 #### 3. 创建 ACR 镜像仓库
@@ -68,7 +69,23 @@
    - 用户名：阿里云账号全名
    - 密码：在 ACR 控制台设置的固定密码
 
-#### 4. 创建 SAE 应用
+#### 4. 配置阿里云短信服务（用户认证）
+
+用户通过手机验证码登录，需要配置阿里云短信服务：
+
+1. 登录阿里云短信服务控制台
+2. 申请短信签名（如：`IndexTTS`）
+3. 申请短信模板，模板内容示例：
+   ```
+   您的验证码为：${code}，有效期5分钟，请勿泄露给他人。
+   ```
+   - 模板类型选择：验证码
+   - 记录模板代码（如：`SMS_xxxxxxxx`）
+4. 等待签名和模板审核通过
+
+> **开发模式**：如果不配置 `SMS_ACCESS_KEY_ID`，系统会进入开发模式，验证码会打印到控制台而不是发送短信。
+
+#### 5. 创建 SAE 应用
 
 ##### Frontend 应用
 
@@ -150,10 +167,20 @@
 | `OSS_BUCKET_NAME` | OSS Bucket 名称 | `your-bucket-name` |
 | `CORS_ORIGINS` | CORS 允许的域名 | `https://your-frontend.com` |
 | `INFERENCE_URL` | 推理服务地址 | `https://your-inference-url.com` |
-| `JWT_PRIVATE_KEY` | JWT 私钥 (RS256) | `-----BEGIN RSA PRIVATE KEY-----...` |
-| `JWT_EXPIRE_SECONDS` | JWT 过期时间（秒） | `3600` |
+| `JWT_PRIVATE_KEY` | JWT 私钥 (RS256, 用于推理服务) | `-----BEGIN RSA PRIVATE KEY-----...` |
+| `JWT_EXPIRE_SECONDS` | JWT 过期时间（秒, 用于推理服务） | `3600` |
+| `SMS_ACCESS_KEY_ID` | 阿里云短信 AccessKey ID | `LTAI5txxxxxxxxx` |
+| `SMS_ACCESS_KEY_SECRET` | 阿里云短信 AccessKey Secret | `xxxxxxxxxxxxxxxxxx` |
+| `SMS_SIGN_NAME` | 短信签名 | `IndexTTS` |
+| `SMS_TEMPLATE_CODE` | 短信模板代码 | `SMS_xxxxxxxx` |
+| `SMS_CODE_EXPIRE_MINUTES` | 验证码有效期（分钟） | `5` |
+| `SMS_CODE_COOLDOWN_SECONDS` | 发送冷却时间（秒） | `60` |
+| `AUTH_JWT_SECRET` | 用户认证 JWT 密钥 (HS256) | `your-secret-at-least-32-chars` |
+| `AUTH_JWT_EXPIRE_HOURS` | 用户 Token 有效期（小时） | `168` |
 
-> **注意**: 对于多行的 JWT 私钥，在 SAE 控制台中可以直接粘贴完整内容。
+> **注意**:
+> - 对于多行的 JWT 私钥，在 SAE 控制台中可以直接粘贴完整内容。
+> - `AUTH_JWT_SECRET` 用于用户登录认证，与 `JWT_PRIVATE_KEY`（推理服务认证）是独立的。
 
 ---
 

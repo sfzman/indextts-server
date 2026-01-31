@@ -9,6 +9,7 @@ import (
 // File represents an uploaded file stored in OSS
 type File struct {
 	ID          string         `gorm:"type:varchar(36);primaryKey" json:"id"`
+	UserID      string         `gorm:"type:varchar(36);index;not null" json:"user_id"`
 	Filename    string         `gorm:"type:varchar(255);not null" json:"filename"`
 	OSSKey      string         `gorm:"type:varchar(512);not null;uniqueIndex" json:"oss_key"`
 	ContentType string         `gorm:"type:varchar(100);not null" json:"content_type"`

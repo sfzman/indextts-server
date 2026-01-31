@@ -161,9 +161,10 @@ func (w *Worker) processNextTask() {
 		return
 	}
 
-	// Create file record for the result audio
+	// Create file record for the result audio (inherit user_id from task)
 	resultFile := models.File{
 		ID:          uuid.New().String(),
+		UserID:      task.UserID,
 		Filename:    fmt.Sprintf("result_%s.wav", task.ID),
 		OSSKey:      resultOSSKey,
 		ContentType: "audio/wav",

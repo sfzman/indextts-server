@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"backend-server/middleware"
 	"backend-server/models"
 	"backend-server/services"
 
@@ -12,10 +13,18 @@ import (
 
 // GetFileURL generates a signed URL for accessing a file
 func GetFileURL(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
 	id := c.Param("id")
 
 	var file models.File
-	if err := models.DB.First(&file, "id = ?", id).Error; err != nil {
+	if err := models.DB.First(&file, "id = ? AND user_id = ?", id, userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "File not found",
 		})
@@ -52,21 +61,23 @@ func GetFileURL(c *gin.Context) {
 
 // GetFile proxies file content from OSS with 12-hour cache
 func GetFile(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
 	id := c.Param("id")
 
 	var file models.File
-	if err := models.DB.First(&file, "id = ?", id).Error; err != nil {
+	if err := models.DB.First(&file, "id = ? AND user_id = ?", id, userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "File not found",
 		})
 		return
 	}
-
-	// TODO: Add authentication check here
-	// if !isAuthenticated(c) {
-	//     c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-	//     return
-	// }
 
 	// Get file content from OSS
 	reader, err := services.GetObject(file.OSSKey)
@@ -88,10 +99,18 @@ func GetFile(c *gin.Context) {
 
 // GetFileMetadata retrieves file metadata by ID (without content)
 func GetFileMetadata(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
 	id := c.Param("id")
 
 	var file models.File
-	if err := models.DB.First(&file, "id = ?", id).Error; err != nil {
+	if err := models.DB.First(&file, "id = ? AND user_id = ?", id, userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "File not found",
 		})

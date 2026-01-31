@@ -35,6 +35,18 @@ type Config struct {
 	InferenceURL     string
 	JWTPrivateKey    string
 	JWTExpireSeconds int
+
+	// SMS (Aliyun)
+	SMSAccessKeyID      string
+	SMSAccessKeySecret  string
+	SMSSignName         string
+	SMSTemplateCode     string
+	SMSCodeExpireMinutes int
+	SMSCodeCooldownSeconds int
+
+	// User Auth
+	AuthJWTSecret      string
+	AuthJWTExpireHours int
 }
 
 var Cfg *Config
@@ -60,6 +72,18 @@ func Load() error {
 		InferenceURL:       getEnv("INFERENCE_URL", "http://localhost:8000"),
 		JWTPrivateKey:      strings.ReplaceAll(getEnv("JWT_PRIVATE_KEY", ""), `\n`, "\n"),
 		JWTExpireSeconds:   getEnvInt("JWT_EXPIRE_SECONDS", 60),
+
+		// SMS configuration
+		SMSAccessKeyID:         getEnv("SMS_ACCESS_KEY_ID", ""),
+		SMSAccessKeySecret:     getEnv("SMS_ACCESS_KEY_SECRET", ""),
+		SMSSignName:            getEnv("SMS_SIGN_NAME", ""),
+		SMSTemplateCode:        getEnv("SMS_TEMPLATE_CODE", ""),
+		SMSCodeExpireMinutes:   getEnvInt("SMS_CODE_EXPIRE_MINUTES", 5),
+		SMSCodeCooldownSeconds: getEnvInt("SMS_CODE_COOLDOWN_SECONDS", 60),
+
+		// User Auth configuration
+		AuthJWTSecret:      getEnv("AUTH_JWT_SECRET", ""),
+		AuthJWTExpireHours: getEnvInt("AUTH_JWT_EXPIRE_HOURS", 168),
 	}
 
 	return nil

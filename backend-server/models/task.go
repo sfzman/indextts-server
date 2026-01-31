@@ -29,6 +29,7 @@ const (
 // Task represents a TTS synthesis task
 type Task struct {
 	ID        string         `gorm:"type:varchar(36);primaryKey" json:"id"`
+	UserID    string         `gorm:"type:varchar(36);index;not null" json:"user_id"`
 	Status    TaskStatus     `gorm:"type:varchar(20);index;default:pending" json:"status"`
 	Text      string         `gorm:"type:text;not null" json:"text"`
 

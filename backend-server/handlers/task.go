@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"backend-server/middleware"
 	"backend-server/models"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +23,14 @@ type CreateTaskRequest struct {
 
 // CreateTask creates a new TTS task
 func CreateTask(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
 	var req CreateTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -30,9 +39,9 @@ func CreateTask(c *gin.Context) {
 		return
 	}
 
-	// Validate reference audio file exists
+	// Validate reference audio file exists and belongs to the user
 	var refFile models.File
-	if err := models.DB.First(&refFile, "id = ?", req.ReferenceAudioFileID).Error; err != nil {
+	if err := models.DB.First(&refFile, "id = ? AND user_id = ?", req.ReferenceAudioFileID, userID).Error; err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Reference audio file not found",
 		})
@@ -48,9 +57,9 @@ func CreateTask(c *gin.Context) {
 			})
 			return
 		}
-		// Validate emotion prompt file exists
+		// Validate emotion prompt file exists and belongs to the user
 		var emotionFile models.File
-		if err := models.DB.First(&emotionFile, "id = ?", req.EmotionPromptFileID).Error; err != nil {
+		if err := models.DB.First(&emotionFile, "id = ? AND user_id = ?", req.EmotionPromptFileID, userID).Error; err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{
 				"error": "Emotion prompt file not found",
 			})
@@ -78,6 +87,7 @@ func CreateTask(c *gin.Context) {
 	// Create task
 	task := models.Task{
 		ID:                   uuid.New().String(),
+		UserID:               userID,
 		Status:               models.TaskStatusPending,
 		Text:                 req.Text,
 		ReferenceAudioFileID: req.ReferenceAudioFileID,
@@ -125,10 +135,18 @@ type TaskResponse struct {
 
 // GetTask retrieves a task by ID
 func GetTask(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
 	id := c.Param("id")
 
 	var task models.Task
-	if err := models.DB.First(&task, "id = ?", id).Error; err != nil {
+	if err := models.DB.First(&task, "id = ? AND user_id = ?", id, userID).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{
 			"error": "Task not found",
 		})
@@ -170,6 +188,14 @@ type TaskListItem struct {
 
 // ListTasks lists tasks with pagination
 func ListTasks(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
 	var tasks []models.Task
 
 	// Pagination
@@ -198,8 +224,8 @@ func ListTasks(c *gin.Context) {
 
 	offset := (page - 1) * pageSize
 
-	// Query with optional status filter
-	query := models.DB.Model(&models.Task{})
+	// Query with user_id filter and optional status filter
+	query := models.DB.Model(&models.Task{}).Where("user_id = ?", userID)
 	if status, exists := c.GetQuery("status"); exists {
 		query = query.Where("status = ?", status)
 	}

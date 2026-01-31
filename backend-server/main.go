@@ -8,6 +8,7 @@ import (
 
 	"backend-server/config"
 	"backend-server/handlers"
+	"backend-server/middleware"
 	"backend-server/models"
 	"backend-server/services"
 
@@ -34,6 +35,11 @@ func main() {
 	// Initialize inference service
 	if err := services.InitInference(); err != nil {
 		log.Fatalf("Failed to initialize inference service: %v", err)
+	}
+
+	// Initialize SMS service
+	if err := services.InitSMS(); err != nil {
+		log.Fatalf("Failed to initialize SMS service: %v", err)
 	}
 
 	// Start background worker
@@ -65,17 +71,32 @@ func main() {
 	// API routes
 	api := r.Group("/api/v1")
 	{
-		// Upload
-		api.POST("/upload", handlers.UploadAudio)
+		// Public auth routes (no authentication required)
+		auth := api.Group("/auth")
+		{
+			auth.POST("/send-code", handlers.SendCode)
+			auth.POST("/login", handlers.Login)
+		}
 
-		// Files
-		api.GET("/files/:id", handlers.GetFile)
-		api.GET("/files/:id/url", handlers.GetFileURL)
+		// Protected routes (require authentication)
+		protected := api.Group("")
+		protected.Use(middleware.AuthRequired())
+		{
+			// Auth - get current user
+			protected.GET("/auth/me", handlers.GetCurrentUser)
 
-		// Tasks
-		api.POST("/tasks", handlers.CreateTask)
-		api.GET("/tasks", handlers.ListTasks)
-		api.GET("/tasks/:id", handlers.GetTask)
+			// Upload
+			protected.POST("/upload", handlers.UploadAudio)
+
+			// Files
+			protected.GET("/files/:id", handlers.GetFile)
+			protected.GET("/files/:id/url", handlers.GetFileURL)
+
+			// Tasks
+			protected.POST("/tasks", handlers.CreateTask)
+			protected.GET("/tasks", handlers.ListTasks)
+			protected.GET("/tasks/:id", handlers.GetTask)
+		}
 	}
 
 	// Graceful shutdown

@@ -1,8 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
+import { sendVerificationCode, login, User } from '../services/api';
 
 interface AuthProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess: (user: User) => void;
 }
 
 const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
@@ -11,6 +12,8 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   const [code, setCode] = useState('');
   const [countdown, setCountdown] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let timer: number;
@@ -22,31 +25,48 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
     return () => clearInterval(timer);
   }, [countdown]);
 
-  const handleSendCode = () => {
+  const handleSendCode = async () => {
     if (!/^1[3-9]\d{9}$/.test(phone)) {
-      alert('请输入正确的11位手机号码');
+      setError('请输入正确的11位手机号码');
       return;
     }
-    setCountdown(60);
-    console.log('验证码已发送至:', phone);
+
+    setError(null);
+    setSendingCode(true);
+
+    try {
+      await sendVerificationCode(phone);
+      setCountdown(60);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '发送验证码失败');
+    } finally {
+      setSendingCode(false);
+    }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
     if (!phone || !code) {
-      alert('请填写完整信息');
+      setError('请填写完整信息');
       return;
     }
     if (code.length !== 6) {
-      alert('请输入6位验证码');
+      setError('请输入6位验证码');
       return;
     }
 
+    setError(null);
     setLoading(true);
-    setTimeout(() => {
+
+    try {
+      const response = await login(phone, code);
+      onLoginSuccess(response.user);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '登录失败');
+    } finally {
       setLoading(false);
-      onLoginSuccess();
-    }, 1000);
+    }
   };
 
   return (
@@ -66,6 +86,13 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
             </h2>
             <p className="text-gray-400 text-sm font-light">使用手机号码快速{isLogin ? '登录' : '注册'}</p>
           </div>
+
+          {/* 错误提示 */}
+          {error && (
+            <div className="mb-6 p-3 bg-red-900/30 border border-red-500/30 rounded-xl text-red-400 text-sm text-center">
+              {error}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="space-y-2">
@@ -103,14 +130,20 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
                 </div>
                 <button
                   type="button"
-                  disabled={countdown > 0}
+                  disabled={countdown > 0 || sendingCode}
                   onClick={handleSendCode}
-                  className={`px-4 rounded-xl font-medium text-xs transition-all whitespace-nowrap min-w-[110px]
-                    ${countdown > 0 
-                      ? 'bg-gray-900 text-gray-600 cursor-not-allowed border border-gray-800' 
+                  className={`px-4 rounded-xl font-medium text-xs transition-all whitespace-nowrap min-w-[110px] flex items-center justify-center
+                    ${countdown > 0 || sendingCode
+                      ? 'bg-gray-900 text-gray-600 cursor-not-allowed border border-gray-800'
                       : 'bg-white/5 text-red-400 border border-red-500/20 hover:bg-red-500/10'}`}
                 >
-                  {countdown > 0 ? `${countdown}s` : '获取验证码'}
+                  {sendingCode ? (
+                    <i className="fas fa-spinner fa-spin"></i>
+                  ) : countdown > 0 ? (
+                    `${countdown}s`
+                  ) : (
+                    '获取验证码'
+                  )}
                 </button>
               </div>
             </div>

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"backend-server/middleware"
 	"backend-server/models"
 	"backend-server/services"
 
@@ -23,6 +24,14 @@ var allowedAudioExtensions = map[string]bool{
 
 // UploadAudio handles audio file upload
 func UploadAudio(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
 	file, err := c.FormFile("file")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
@@ -83,6 +92,7 @@ func UploadAudio(c *gin.Context) {
 	// Create file record in database
 	fileRecord := models.File{
 		ID:          uuid.New().String(),
+		UserID:      userID,
 		Filename:    file.Filename,
 		OSSKey:      ossKey,
 		ContentType: contentType,
