@@ -6,6 +6,7 @@ import (
 
 	"backend-server/middleware"
 	"backend-server/models"
+	"backend-server/services"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -35,6 +36,21 @@ func CreateTask(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "Invalid request: " + err.Error(),
+		})
+		return
+	}
+
+	// Check if user has enough credits
+	hasCredits, err := services.CheckCredits(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to check credits",
+		})
+		return
+	}
+	if !hasCredits {
+		c.JSON(http.StatusPaymentRequired, gin.H{
+			"error": "Insufficient credits",
 		})
 		return
 	}
@@ -108,6 +124,13 @@ func CreateTask(c *gin.Context) {
 			"error": "Failed to create task: " + err.Error(),
 		})
 		return
+	}
+
+	// Deduct credits after task is created
+	if err := services.DeductCredits(userID, task.ID); err != nil {
+		// Task is created but credits deduction failed
+		// Log the error but don't fail the request
+		// The task will still be processed
 	}
 
 	c.JSON(http.StatusCreated, gin.H{

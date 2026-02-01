@@ -42,6 +42,11 @@ func main() {
 		log.Fatalf("Failed to initialize SMS service: %v", err)
 	}
 
+	// Initialize Alipay service
+	if err := services.InitAlipay(); err != nil {
+		log.Fatalf("Failed to initialize Alipay service: %v", err)
+	}
+
 	// Start background worker
 	worker := services.NewWorker()
 	worker.Start()
@@ -96,7 +101,20 @@ func main() {
 			protected.POST("/tasks", handlers.CreateTask)
 			protected.GET("/tasks", handlers.ListTasks)
 			protected.GET("/tasks/:id", handlers.GetTask)
+
+			// Credits
+			protected.GET("/credits", handlers.GetCredits)
+			protected.GET("/credits/logs", handlers.GetCreditLogs)
+
+			// Payment
+			protected.POST("/payment/orders", handlers.CreateOrder)
+			protected.POST("/payment/orders/wap", handlers.CreateWapOrder)
+			protected.GET("/payment/orders", handlers.ListOrders)
+			protected.GET("/payment/orders/:id", handlers.GetOrder)
 		}
+
+		// Public payment callback (no auth required)
+		api.POST("/payment/alipay/notify", handlers.AlipayNotify)
 	}
 
 	// Graceful shutdown

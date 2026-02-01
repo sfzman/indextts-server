@@ -91,15 +91,28 @@ func LoginWithPhone(phone, code string) (*models.User, string, error) {
 	result := models.DB.Where("phone = ?", phone).First(&user)
 
 	if result.Error != nil {
-		// User doesn't exist, create new user
+		// User doesn't exist, create new user with initial credits
+		initialCredits := config.Cfg.CreditsInitial
 		user = models.User{
-			ID:     uuid.New().String(),
-			Phone:  phone,
-			Status: models.UserStatusActive,
+			ID:      uuid.New().String(),
+			Phone:   phone,
+			Credits: initialCredits,
+			Status:  models.UserStatusActive,
 		}
 		if err := models.DB.Create(&user).Error; err != nil {
 			return nil, "", fmt.Errorf("failed to create user: %w", err)
 		}
+
+		// Record credit log for registration bonus
+		creditLog := models.CreditLog{
+			ID:      uuid.New().String(),
+			UserID:  user.ID,
+			Amount:  initialCredits,
+			Balance: initialCredits,
+			Type:    "register",
+			Remark:  "Registration bonus",
+		}
+		models.DB.Create(&creditLog)
 	}
 
 	// Check if user is disabled

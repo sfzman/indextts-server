@@ -77,9 +77,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        <div className="inline-block px-4 py-1.5 mb-4 rounded-full bg-red-900/40 border border-red-500/30 text-red-400 text-xs font-bold tracking-widest uppercase">
-          基于 Gemini AI 驱动
-        </div>
         <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tight mb-4">
           VoxClone <span className="bg-gradient-to-r from-red-500 to-rose-600 bg-clip-text text-transparent">语音实验室</span>
         </h1>

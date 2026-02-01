@@ -20,6 +20,7 @@ type User struct {
 	Phone       string         `gorm:"type:varchar(20);uniqueIndex;not null" json:"phone"`
 	Nickname    string         `gorm:"type:varchar(100)" json:"nickname,omitempty"`
 	Avatar      string         `gorm:"type:varchar(512)" json:"avatar,omitempty"`
+	Credits     int            `gorm:"default:0" json:"credits"`
 	Status      UserStatus     `gorm:"type:varchar(20);default:active" json:"status"`
 	LastLoginAt *time.Time     `json:"last_login_at,omitempty"`
 	CreatedAt   time.Time      `json:"created_at"`

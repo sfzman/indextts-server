@@ -1,19 +1,32 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { VoiceProject, EmotionType, EmotionVectors, CloneTask } from '../types';
-import { GeminiVoiceService } from '../services/geminiService';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { VoiceProject, EmotionType, EmotionVectors, CloneTask, emotionTypeToMode, TaskListItem, BackendTaskStatus } from '../types';
 import { fileToBase64 } from '../services/audioUtils';
+import { uploadAudioFile } from '../services/fileService';
+import { createTask, getTasks, pollTaskUntilDone } from '../services/taskService';
+import { getAudioBlobUrl } from '../services/fileService';
 import TaskList from './TaskList';
 
 const initialVectors: EmotionVectors = {
-  happy: 0.1,
-  angry: 0.0,
-  sad: 0.0,
-  fear: 0.0,
-  disgust: 0.0,
-  depressed: 0.0,
-  surprised: 0.0,
-  calm: 0.8
+  happy: 0,
+  angry: 0,
+  sad: 0,
+  fear: 0,
+  disgust: 0,
+  depressed: 0,
+  surprised: 0,
+  calm: 0
+};
+
+const emotionLabels: Record<keyof EmotionVectors, string> = {
+  happy: '喜悦',
+  angry: '愤怒',
+  sad: '哀伤',
+  fear: '恐惧',
+  disgust: '厌恶',
+  depressed: '低落',
+  surprised: '惊喜',
+  calm: '平静',
 };
 
 interface ToastState {
@@ -27,19 +40,26 @@ const VoiceStudio: React.FC = () => {
     script: '',
     emotionType: EmotionType.SAME_AS_VOICE,
     emotionVectors: { ...initialVectors },
-    emotionReference: null
+    emotionReference: null,
+    emotionAlpha: 0.8
   });
 
   const [voicePreviewUrl, setVoicePreviewUrl] = useState<string | null>(null);
+  const [voiceReferenceFile, setVoiceReferenceFile] = useState<File | null>(null);
+  const [emotionReferenceFile, setEmotionReferenceFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [tasks, setTasks] = useState<CloneTask[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
   const [balance, setBalance] = useState(10.00);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [tasksPage, setTasksPage] = useState(1);
+  const [tasksTotal, setTasksTotal] = useState(0);
 
   const menuRef = useRef<HTMLDivElement>(null);
   const voiceInputRef = useRef<HTMLInputElement>(null);
+  const emotionInputRef = useRef<HTMLInputElement>(null);
+  const [emotionPreviewUrl, setEmotionPreviewUrl] = useState<string | null>(null);
 
   // 点击外部关闭菜单
   useEffect(() => {
@@ -60,18 +80,57 @@ const VoiceStudio: React.FC = () => {
     }
   }, [toast]);
 
-  // 加载与持久化
+  // 从后端加载任务列表
+  const loadTasks = useCallback(async () => {
+    try {
+      const response = await getTasks({ page: tasksPage, page_size: 10 });
+      setTasksTotal(response.total);
+
+      // 将后端任务转换为前端格式
+      const frontendTasks: CloneTask[] = await Promise.all(
+        response.tasks.map(async (task: TaskListItem): Promise<CloneTask> => {
+          let audioUrl: string | null = null;
+
+          // 如果任务已完成且有结果文件，获取音频 URL
+          if (task.status === 'completed' && task.result_audio_file_id) {
+            try {
+              audioUrl = await getAudioBlobUrl(task.result_audio_file_id);
+            } catch {
+              // 获取音频失败时忽略
+            }
+          }
+
+          return {
+            id: task.id,
+            status: task.status === 'pending' ? 'processing' : task.status,
+            script: task.text,
+            audioUrl,
+            createdAt: new Date(task.created_at).getTime(),
+            errorMessage: task.error_message,
+          };
+        })
+      );
+
+      setTasks(frontendTasks);
+    } catch (error) {
+      console.error('加载任务列表失败:', error);
+    }
+  }, [tasksPage]);
+
+  // 初始化加载任务
   useEffect(() => {
-    const savedTasks = localStorage.getItem('voxclone_tasks');
-    if (savedTasks) { try { setTasks(JSON.parse(savedTasks)); } catch (e) {} }
+    loadTasks();
+  }, [loadTasks]);
+
+  // 持久化余额（暂时保留本地存储）
+  useEffect(() => {
     const savedBalance = localStorage.getItem('voxclone_balance');
     if (savedBalance) setBalance(parseFloat(savedBalance));
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('voxclone_tasks', JSON.stringify(tasks));
     localStorage.setItem('voxclone_balance', balance.toString());
-  }, [tasks, balance]);
+  }, [balance]);
 
   const processVoiceFile = async (file: File) => {
     if (!file.type.startsWith('audio/')) {
@@ -80,10 +139,11 @@ const VoiceStudio: React.FC = () => {
     }
     const base64 = await fileToBase64(file);
     const previewUrl = URL.createObjectURL(file);
-    
+
     if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
-    
+
     setVoicePreviewUrl(previewUrl);
+    setVoiceReferenceFile(file);
     setProject(prev => ({ ...prev, voiceReference: base64 }));
   };
 
@@ -105,8 +165,39 @@ const VoiceStudio: React.FC = () => {
     e.stopPropagation();
     if (voicePreviewUrl) URL.revokeObjectURL(voicePreviewUrl);
     setVoicePreviewUrl(null);
+    setVoiceReferenceFile(null);
     setProject(prev => ({ ...prev, voiceReference: null }));
     if (voiceInputRef.current) voiceInputRef.current.value = '';
+  };
+
+  // 情感参考音频处理
+  const processEmotionFile = async (file: File) => {
+    if (!file.type.startsWith('audio/')) {
+      setToast({ type: 'error', message: "请上传有效的音频文件" });
+      return;
+    }
+    const base64 = await fileToBase64(file);
+    const previewUrl = URL.createObjectURL(file);
+
+    if (emotionPreviewUrl) URL.revokeObjectURL(emotionPreviewUrl);
+
+    setEmotionPreviewUrl(previewUrl);
+    setEmotionReferenceFile(file);
+    setProject(prev => ({ ...prev, emotionReference: base64 }));
+  };
+
+  const handleEmotionFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) await processEmotionFile(file);
+  };
+
+  const handleResetEmotion = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (emotionPreviewUrl) URL.revokeObjectURL(emotionPreviewUrl);
+    setEmotionPreviewUrl(null);
+    setEmotionReferenceFile(null);
+    setProject(prev => ({ ...prev, emotionReference: null }));
+    if (emotionInputRef.current) emotionInputRef.current.value = '';
   };
 
   const updateVector = (key: keyof EmotionVectors, value: number) => {
@@ -117,7 +208,7 @@ const VoiceStudio: React.FC = () => {
   };
 
   const generateVoice = async () => {
-    if (!project.voiceReference || !project.script) {
+    if (!voiceReferenceFile || !project.script) {
       setToast({ type: 'error', message: "请上传声音参考并输入台词内容" });
       return;
     }
@@ -128,27 +219,94 @@ const VoiceStudio: React.FC = () => {
     }
 
     setIsProcessing(true);
-    const taskId = Math.random().toString(36).substr(2, 9);
-    
-    const newTask: CloneTask = {
-      id: taskId,
-      status: 'processing',
-      script: project.script,
-      audioUrl: null,
-      createdAt: Date.now()
-    };
-    setTasks(prev => [newTask, ...prev]);
 
     try {
-      const service = new GeminiVoiceService();
-      const audioUrl = await service.generateClonedVoice(project);
-      
-      setBalance(prev => Math.max(0, prev - 1.00));
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'completed', audioUrl } : t));
-      setToast({ type: 'success', message: "克隆成功！已扣除 $1.00" });
-    } catch (error: any) {
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: 'failed', errorMessage: error.message || '生成失败' } : t));
-      setToast({ type: 'error', message: error.message || "克隆任务失败，请检查配置" });
+      // 1. 上传参考音频
+      setToast({ type: 'success', message: "正在上传音频..." });
+      const voiceUploadResult = await uploadAudioFile(voiceReferenceFile);
+
+      // 2. 如果需要，上传情感参考音频
+      let emotionPromptFileId: string | undefined;
+      if (project.emotionType === EmotionType.REFERENCE_AUDIO && emotionReferenceFile) {
+        const emotionUploadResult = await uploadAudioFile(emotionReferenceFile);
+        emotionPromptFileId = emotionUploadResult.id;
+      }
+
+      // 3. 构建情感向量（如果需要）
+      let emotionVector: number[] | undefined;
+      if (project.emotionType === EmotionType.VECTORS) {
+        emotionVector = [
+          project.emotionVectors.happy,
+          project.emotionVectors.angry,
+          project.emotionVectors.sad,
+          project.emotionVectors.fear,
+          project.emotionVectors.disgust,
+          project.emotionVectors.depressed,
+          project.emotionVectors.surprised,
+          project.emotionVectors.calm,
+        ];
+      }
+
+      // 4. 创建任务
+      setToast({ type: 'success', message: "正在创建任务..." });
+      const createResult = await createTask({
+        text: project.script,
+        reference_audio_file_id: voiceUploadResult.id,
+        emotion_mode: emotionTypeToMode[project.emotionType],
+        emotion_prompt_file_id: emotionPromptFileId,
+        emotion_vector: emotionVector,
+        emotion_alpha: project.emotionAlpha,
+      });
+
+      // 5. 添加任务到列表（处理中状态）
+      const newTask: CloneTask = {
+        id: createResult.id,
+        status: 'processing',
+        script: project.script,
+        audioUrl: null,
+        createdAt: new Date(createResult.created_at).getTime(),
+      };
+      setTasks(prev => [newTask, ...prev]);
+
+      // 6. 轮询任务状态
+      setToast({ type: 'success', message: "任务已提交，正在处理中..." });
+      const completedTask = await pollTaskUntilDone(createResult.id, {
+        interval: 2000,
+        timeout: 300000,
+        onStatusChange: (status: BackendTaskStatus) => {
+          setTasks(prev =>
+            prev.map(t =>
+              t.id === createResult.id
+                ? { ...t, status: status === 'pending' ? 'processing' : status }
+                : t
+            )
+          );
+        },
+      });
+
+      // 7. 处理完成结果
+      if (completedTask.status === 'completed' && completedTask.result_audio_file_id) {
+        const audioUrl = await getAudioBlobUrl(completedTask.result_audio_file_id);
+        setBalance(prev => Math.max(0, prev - 1.00));
+        setTasks(prev =>
+          prev.map(t =>
+            t.id === createResult.id ? { ...t, status: 'completed', audioUrl } : t
+          )
+        );
+        setToast({ type: 'success', message: "克隆成功！已扣除 $1.00" });
+      } else {
+        setTasks(prev =>
+          prev.map(t =>
+            t.id === createResult.id
+              ? { ...t, status: 'failed', errorMessage: completedTask.error_message || '生成失败' }
+              : t
+          )
+        );
+        setToast({ type: 'error', message: completedTask.error_message || "克隆任务失败" });
+      }
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '生成失败';
+      setToast({ type: 'error', message: errorMessage });
     } finally {
       setIsProcessing(false);
     }
@@ -298,23 +456,128 @@ const VoiceStudio: React.FC = () => {
               })}
             </div>
 
+            {/* 保持原味模式说明 */}
+            {project.emotionType === EmotionType.SAME_AS_VOICE && (
+              <div className="bg-gray-900/40 rounded-xl p-3 border border-white/5">
+                <p className="text-[11px] text-gray-400 leading-relaxed">
+                  <i className="fas fa-info-circle text-gray-600 mr-1.5"></i>
+                  直接使用声音参考音频中的原始情感色彩，合成的语音将保持与参考音频相同的情感表达。
+                </p>
+              </div>
+            )}
+
             {project.emotionType === EmotionType.VECTORS && (
-              <div className="bg-gray-900/40 rounded-xl p-4 border border-white/5 grid grid-cols-2 gap-x-4 gap-y-3">
-                {(Object.keys(project.emotionVectors) as Array<keyof EmotionVectors>).map((key) => (
-                  <div key={key} className="space-y-1">
-                    <div className="flex justify-between text-[10px]">
-                      <span className="text-gray-500">{key}</span>
-                      <span className="text-red-400 font-mono">{project.emotionVectors[key].toFixed(1)}</span>
+              <div className="bg-gray-900/40 rounded-xl p-4 border border-white/5 space-y-4">
+                <p className="text-[11px] text-gray-400 leading-relaxed pb-2 border-b border-white/5">
+                  <i className="fas fa-sliders-h text-gray-600 mr-1.5"></i>
+                  通过调节 8 种情感维度的数值，精确控制合成语音的情感表达。可以混合多种情感创造独特的语气风格。
+                </p>
+                <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                  {(Object.keys(project.emotionVectors) as Array<keyof EmotionVectors>).map((key) => (
+                    <div key={key} className="space-y-1">
+                      <div className="flex justify-between text-[10px]">
+                        <span className="text-gray-500">{emotionLabels[key]}</span>
+                        <span className="text-red-400 font-mono">{project.emotionVectors[key].toFixed(1)}</span>
+                      </div>
+                      <input
+                        type="range" min="0" max="1" step="0.1"
+                        disabled={isProcessing}
+                        value={project.emotionVectors[key]}
+                        onChange={(e) => updateVector(key, parseFloat(e.target.value))}
+                        className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-30"
+                      />
                     </div>
-                    <input
-                      type="range" min="0" max="1" step="0.1"
-                      disabled={isProcessing}
-                      value={project.emotionVectors[key]}
-                      onChange={(e) => updateVector(key, parseFloat(e.target.value))}
-                      className="w-full h-1 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-30"
-                    />
+                  ))}
+                </div>
+                <div className="pt-3 border-t border-white/5 space-y-1">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-400 font-medium">情感强度</span>
+                    <span className="text-red-400 font-mono">{project.emotionAlpha.toFixed(2)}</span>
                   </div>
-                ))}
+                  <input
+                    type="range" min="0" max="1" step="0.01"
+                    disabled={isProcessing}
+                    value={project.emotionAlpha}
+                    onChange={(e) => setProject(prev => ({ ...prev, emotionAlpha: parseFloat(e.target.value) }))}
+                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-red-500 disabled:opacity-30"
+                  />
+                </div>
+              </div>
+            )}
+
+            {project.emotionType === EmotionType.REFERENCE_AUDIO && (
+              <div className="space-y-3">
+                <div className="bg-gray-900/40 rounded-xl p-3 border border-white/5">
+                  <p className="text-[11px] text-gray-400 leading-relaxed">
+                    <i className="fas fa-theater-masks text-gray-600 mr-1.5"></i>
+                    上传一段带有目标情感的音频，系统将提取其中的情感特征并应用到合成语音中，让输出的声音具有相似的情感表达。
+                  </p>
+                </div>
+                <div
+                  onClick={() => !project.emotionReference && !isProcessing && emotionInputRef.current?.click()}
+                  className={`relative border-2 border-dashed rounded-xl p-4 transition-all min-h-[100px] flex flex-col items-center justify-center
+                    ${isProcessing ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}
+                    ${project.emotionReference
+                      ? 'border-orange-500/30 bg-orange-500/5'
+                      : 'border-gray-800 hover:border-orange-500/50 hover:bg-white/5'}`}
+                >
+                  <input
+                    type="file"
+                    ref={emotionInputRef}
+                    className="hidden"
+                    accept="audio/*"
+                    onChange={handleEmotionFileChange}
+                  />
+
+                  {!project.emotionReference ? (
+                    <div className="text-center space-y-2">
+                      <div className="w-10 h-10 rounded-full bg-gray-900 text-gray-500 flex items-center justify-center mx-auto shadow-inner border border-white/5">
+                        <i className="fas fa-theater-masks text-lg"></i>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-300 font-medium">上传情感参考音频</p>
+                        <p className="text-[10px] text-gray-600 mt-0.5">提取该音频的情感特征</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="w-full space-y-3 animate-in fade-in zoom-in duration-300">
+                      <div className="flex items-center justify-between w-full">
+                        <span className="text-[10px] font-bold text-orange-500 uppercase tracking-widest flex items-center gap-2">
+                          <i className="fas fa-check-circle"></i> 情感参考已设置
+                        </span>
+                        <button
+                          onClick={handleResetEmotion}
+                          className="text-[10px] font-bold text-gray-500 hover:text-orange-400 transition-colors flex items-center gap-1"
+                        >
+                          <i className="fas fa-sync-alt"></i> 更换
+                        </button>
+                      </div>
+
+                      <div className="bg-black/40 rounded-lg p-2 flex items-center gap-2 border border-white/5">
+                        <div className="w-8 h-8 rounded-md bg-orange-600/20 flex items-center justify-center text-orange-500">
+                          <i className="fas fa-theater-masks text-sm"></i>
+                        </div>
+                        <audio src={emotionPreviewUrl!} controls className="h-7 flex-grow invert opacity-60" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 情感强度滑块 - 控制从参考音频提取的情感特征的混合强度 */}
+                <div className="bg-gray-900/40 rounded-xl p-3 border border-white/5 space-y-1">
+                  <div className="flex justify-between text-[10px]">
+                    <span className="text-gray-400 font-medium">情感强度</span>
+                    <span className="text-orange-400 font-mono">{project.emotionAlpha.toFixed(2)}</span>
+                  </div>
+                  <input
+                    type="range" min="0" max="1" step="0.01"
+                    disabled={isProcessing}
+                    value={project.emotionAlpha}
+                    onChange={(e) => setProject(prev => ({ ...prev, emotionAlpha: parseFloat(e.target.value) }))}
+                    className="w-full h-1.5 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-orange-500 disabled:opacity-30"
+                  />
+                  <p className="text-[10px] text-gray-600 pt-1">强度越高越接近情感参考音频，越低则越像原音频</p>
+                </div>
               </div>
             )}
           </div>
