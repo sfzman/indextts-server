@@ -100,7 +100,8 @@ jobs:
             STATUS=$(aliyun sae DescribeApplicationStatus \
               --region ${{ env.REGION }} \
               --AppId ${{ env.SAE_APP_ID }} \
-              --output cols=CurrentStatus rows=Data | tail -n 1)
+              --output json \
+              --query 'Data.CurrentStatus' | tr -d '"')
 
             echo "Deployment status: $STATUS"
 
