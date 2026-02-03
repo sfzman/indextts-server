@@ -30,5 +30,6 @@ This frontend powers the VoxClone voice cloning app in the larger `indextts-serv
 - Follow the existing commit style: short conventional prefixes like `feat:`, `fix:`, `chore:` followed by a brief description (often bilingual/Chinese).
 - PRs should include a clear summary, testing notes (commands run), and screenshots for UI changes.
 
+
 ## Configuration & Secrets
 - Create `.env.local` with `GEMINI_API_KEY` for local development. Do not commit secrets.
