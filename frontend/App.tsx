@@ -89,7 +89,7 @@ const App: React.FC = () => {
       {/* 核心显示区 */}
       <main className="flex-grow">
         {user ? (
-          <VoiceStudio />
+          <VoiceStudio user={user} onUserUpdate={setUser} />
         ) : (
           <Auth onLoginSuccess={handleLoginSuccess} />
         )}

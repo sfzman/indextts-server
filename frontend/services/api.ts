@@ -12,6 +12,7 @@ export interface User {
   phone: string;
   nickname?: string;
   avatar?: string;
+  credits: number;
   status: 'active' | 'disabled';
   last_login_at?: string;
   created_at: string;

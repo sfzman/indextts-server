@@ -5,6 +5,7 @@ import { fileToBase64 } from '../services/audioUtils';
 import { uploadAudioFile } from '../services/fileService';
 import { createTask, getTasks, pollTaskUntilDone } from '../services/taskService';
 import { getAudioBlobUrl } from '../services/fileService';
+import { User, getCurrentUser } from '../services/api';
 import TaskList from './TaskList';
 
 const initialVectors: EmotionVectors = {
@@ -34,7 +35,12 @@ interface ToastState {
   message: string;
 }
 
-const VoiceStudio: React.FC = () => {
+interface VoiceStudioProps {
+  user: User;
+  onUserUpdate: (user: User) => void;
+}
+
+const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   const [project, setProject] = useState<VoiceProject>({
     voiceReference: null,
     script: '',
@@ -51,7 +57,6 @@ const VoiceStudio: React.FC = () => {
   const [tasks, setTasks] = useState<CloneTask[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [balance, setBalance] = useState(10.00);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [tasksPage, setTasksPage] = useState(1);
   const [tasksTotal, setTasksTotal] = useState(0);
@@ -121,16 +126,6 @@ const VoiceStudio: React.FC = () => {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
-
-  // 持久化余额（暂时保留本地存储）
-  useEffect(() => {
-    const savedBalance = localStorage.getItem('voxclone_balance');
-    if (savedBalance) setBalance(parseFloat(savedBalance));
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('voxclone_balance', balance.toString());
-  }, [balance]);
 
   const processVoiceFile = async (file: File) => {
     if (!file.type.startsWith('audio/')) {
@@ -213,7 +208,7 @@ const VoiceStudio: React.FC = () => {
       return;
     }
 
-    if (balance < 1.00) {
+    if (user.credits < 1) {
       setToast({ type: 'error', message: "余额不足，请先充值" });
       return;
     }
@@ -287,13 +282,19 @@ const VoiceStudio: React.FC = () => {
       // 7. 处理完成结果
       if (completedTask.status === 'completed' && completedTask.result_audio_file_id) {
         const audioUrl = await getAudioBlobUrl(completedTask.result_audio_file_id);
-        setBalance(prev => Math.max(0, prev - 1.00));
+        // 刷新用户数据获取最新余额
+        try {
+          const updatedUser = await getCurrentUser();
+          onUserUpdate(updatedUser);
+        } catch {
+          // 刷新失败时忽略
+        }
         setTasks(prev =>
           prev.map(t =>
             t.id === createResult.id ? { ...t, status: 'completed', audioUrl } : t
           )
         );
-        setToast({ type: 'success', message: "克隆成功！已扣除 $1.00" });
+        setToast({ type: 'success', message: "克隆成功！" });
       } else {
         setTasks(prev =>
           prev.map(t =>
@@ -329,13 +330,13 @@ const VoiceStudio: React.FC = () => {
             <div className="space-y-4">
               <div className="border-b border-white/5 pb-3">
                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">账户 ID</p>
-                <p className="text-sm text-white font-medium">188****8888</p>
+                <p className="text-sm text-white font-medium">{user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}</p>
               </div>
               <div className="flex justify-between items-end">
                 <div>
                   <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mb-1">当前余额</p>
                   <p className="text-xl font-mono font-bold text-red-500">
-                    <span className="text-sm mr-1">$</span>{balance.toFixed(2)}
+                    {user.credits} <span className="text-sm">积分</span>
                   </p>
                 </div>
               </div>
