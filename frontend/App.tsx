@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import VoiceStudio from './components/VoiceStudio';
 import Auth from './components/Auth';
 import { User, getCachedUser, getCurrentUser, logout, isAuthenticated } from './services/api';
@@ -7,23 +6,21 @@ import { User, getCachedUser, getCurrentUser, logout, isAuthenticated } from './
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const profileRef = useRef<HTMLDivElement>(null);
 
-  // 初始化时检查登录状态
   useEffect(() => {
     const checkAuth = async () => {
       if (isAuthenticated()) {
-        // 尝试从缓存获取用户信息
         const cachedUser = getCachedUser();
         if (cachedUser) {
           setUser(cachedUser);
         }
 
-        // 验证 token 有效性并获取最新用户信息
         try {
           const currentUser = await getCurrentUser();
           setUser(currentUser);
         } catch {
-          // token 失效，清除登录状态
           logout();
           setUser(null);
         }
@@ -40,71 +37,133 @@ const App: React.FC = () => {
 
   const handleLogout = () => {
     logout();
+    setIsProfileOpen(false);
     setUser(null);
   };
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (profileRef.current && !profileRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <i className="fas fa-spinner fa-spin text-4xl text-red-500 mb-4"></i>
-          <p className="text-gray-400">加载中...</p>
+      <div className="min-h-screen flex items-center justify-center px-4">
+        <div className="glass-panel rounded-3xl px-8 py-7 text-center">
+          <div className="w-14 h-14 rounded-2xl mx-auto mb-3 flex items-center justify-center panel-subtle">
+            <i className="fas fa-spinner fa-spin text-xl text-[var(--accent-sage)]"></i>
+          </div>
+          <p className="text-sm text-[var(--text-secondary)]">正在初始化语音工作台...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 min-h-screen flex flex-col">
-      {/* 头部 */}
-      <header className="py-12 text-center relative">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-red-600/10 blur-[120px] rounded-full -z-10"></div>
+    <div className="min-h-screen relative overflow-hidden">
+      <div className="absolute -top-24 -left-20 w-72 h-72 rounded-full bg-[rgba(175,143,139,0.28)] blur-[110px]"></div>
+      <div className="absolute top-8 -right-16 w-80 h-80 rounded-full bg-[rgba(124,145,135,0.24)] blur-[120px]"></div>
 
-        {/* 用户信息和登出按钮 */}
-        {user && (
-          <div className="absolute top-4 right-4 flex items-center gap-4">
-            <span className="text-gray-400 text-sm">
-              <i className="fas fa-user-circle mr-2"></i>
-              {user.nickname || user.phone}
-            </span>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 text-xs text-gray-400 hover:text-red-400 border border-gray-700 hover:border-red-500/30 rounded-lg transition-all"
-            >
-              <i className="fas fa-sign-out-alt mr-1"></i>
-              退出登录
-            </button>
+      <div className="relative mx-auto max-w-[1360px] px-4 sm:px-6 lg:px-8 pb-14">
+        <header className="relative z-50 pt-8 md:pt-12 pb-8 md:pb-10">
+          <div className="glass-panel rounded-[30px] p-6 md:p-8 brand-header">
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
+              <div className="max-w-3xl space-y-4">
+                <div className="pill w-fit tracking-[0.08em]">
+                  <i className="fas fa-wave-square text-[11px] text-[var(--accent-ink)]"></i>
+                  IndexTTS Studio
+                </div>
+
+                <h1 className="text-4xl md:text-5xl lg:text-6xl leading-tight text-[var(--text-primary)]">
+                  语音克隆工作站
+                </h1>
+
+                <p className="text-[15px] md:text-base text-[var(--text-secondary)] leading-relaxed">
+                  保留你的工作流，重塑视觉体验。上传音色参考、控制情感表达、批量管理历史任务，
+                  在统一的玻璃拟态界面里完成高保真语音合成。
+                </p>
+              </div>
+
+              {user ? (
+                <div className="self-start lg:self-end relative" ref={profileRef}>
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      onClick={() => setIsProfileOpen((prev) => !prev)}
+                      className="pill premium-pill focus-ring"
+                      title="查看个人详情"
+                    >
+                      <i className="fas fa-user-circle text-[var(--accent-rose)]"></i>
+                      {user.nickname || user.phone}
+                      <i className={`fas ${isProfileOpen ? 'fa-chevron-up' : 'fa-chevron-down'} text-[10px] opacity-70`}></i>
+                    </button>
+                    <div className="pill premium-pill">
+                      <i className="fas fa-coins text-[var(--accent-gold)]"></i>
+                      {user.credits} 积分
+                    </div>
+                  </div>
+
+                  {isProfileOpen && (
+                    <div className="glass-panel-strong absolute right-0 top-12 w-72 rounded-2xl p-4 space-y-3 z-[120]">
+                      <div className="pb-2 border-b soft-divider">
+                        <p className="muted-label mb-1">账户 ID</p>
+                        <p className="text-sm text-[var(--text-primary)] font-semibold">
+                          {user.phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')}
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="panel-subtle rounded-xl px-3 py-2">
+                          <p className="muted-label mb-1">昵称</p>
+                          <p className="text-xs font-semibold text-[var(--text-primary)] truncate">{user.nickname || '未设置'}</p>
+                        </div>
+                        <div className="panel-subtle rounded-xl px-3 py-2">
+                          <p className="muted-label mb-1">余额</p>
+                          <p className="text-xs font-semibold text-[var(--text-primary)]">{user.credits} 积分</p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleLogout}
+                        className="secondary-button focus-ring h-10 w-full text-sm font-semibold"
+                      >
+                        <i className="fas fa-sign-out-alt mr-1.5"></i>
+                        退出登录
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="pill self-start lg:self-end">
+                  <i className="fas fa-lock text-[var(--accent-gold)]"></i>
+                  登录后可开始克隆
+                </div>
+              )}
+            </div>
           </div>
-        )}
+        </header>
 
-        <h1 className="text-5xl md:text-7xl font-extrabold text-white tracking-tight mb-4">
-          VoxClone <span className="bg-gradient-to-r from-red-500 to-rose-600 bg-clip-text text-transparent">语音实验室</span>
-        </h1>
-        <p className="text-xl text-gray-400 max-w-2xl mx-auto font-light">
-          高保真克隆任何音色。只需上传声音样本，调节情感倾向，
-          AI 即可让您的文字以理想的声音呈现。
-        </p>
-      </header>
+        <main>
+          {user ? (
+            <VoiceStudio user={user} onUserUpdate={setUser} />
+          ) : (
+            <Auth onLoginSuccess={handleLoginSuccess} />
+          )}
+        </main>
 
-      {/* 核心显示区 */}
-      <main className="flex-grow">
-        {user ? (
-          <VoiceStudio user={user} onUserUpdate={setUser} />
-        ) : (
-          <Auth onLoginSuccess={handleLoginSuccess} />
-        )}
-      </main>
-
-      {/* 页脚 */}
-      <footer className="py-16 text-center text-gray-500 text-sm">
-        <div className="flex justify-center gap-8 mb-8 text-xl">
-          <i className="fab fa-twitter hover:text-red-500 cursor-pointer transition-colors"></i>
-          <i className="fab fa-github hover:text-red-500 cursor-pointer transition-colors"></i>
-          <i className="fab fa-discord hover:text-red-500 cursor-pointer transition-colors"></i>
-        </div>
-        <p>&copy; 2024 VoxClone 语音实验室。保留所有权利。</p>
-        <p className="mt-2 text-gray-600 italic">专为高性能语音合成与情感克隆而设计。</p>
-      </footer>
+        <footer className="pt-12 pb-6 text-center text-xs text-[var(--text-muted)]">
+          <div className="flex justify-center gap-3 mb-4">
+            <span className="pill"><i className="fas fa-shield-heart text-[var(--accent-sage)]"></i> 安全鉴权</span>
+            <span className="pill"><i className="fas fa-bolt text-[var(--accent-rose)]"></i> 实时轮询</span>
+            <span className="pill"><i className="fas fa-sliders text-[var(--accent-ink)]"></i> 情感可控</span>
+          </div>
+          <p>© 2026 VoxClone / IndexTTS. 保留所有权利。</p>
+        </footer>
+      </div>
     </div>
   );
 };

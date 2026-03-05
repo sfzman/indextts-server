@@ -12,6 +12,17 @@ export const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
+export const fileToDataUrl = (file: File): Promise<string> => {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = () => {
+      resolve(reader.result as string);
+    };
+    reader.onerror = error => reject(error);
+  });
+};
+
 export const decodeBase64ToUint8Array = (base64: string): Uint8Array => {
   const binaryString = atob(base64);
   const bytes = new Uint8Array(binaryString.length);
@@ -53,6 +64,95 @@ export const createAudioUrlFromBuffer = async (buffer: AudioBuffer): Promise<str
   const wav = bufferToWav(renderedBuffer);
   const blob = new Blob([wav], { type: 'audio/wav' });
   return URL.createObjectURL(blob);
+};
+
+interface WaveformAnalysisResult {
+  duration: number;
+  peaks: number[];
+}
+
+const createBrowserAudioContext = (): AudioContext => {
+  const AudioCtx = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+  if (!AudioCtx) {
+    throw new Error('当前浏览器不支持 AudioContext');
+  }
+  return new AudioCtx();
+};
+
+export const analyzeAudioFile = async (file: File, peakCount: number = 120): Promise<WaveformAnalysisResult> => {
+  const audioContext = createBrowserAudioContext();
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    const channelData = audioBuffer.getChannelData(0);
+    const samples = Math.max(16, peakCount);
+    const blockSize = Math.max(1, Math.floor(channelData.length / samples));
+    const peaks: number[] = [];
+
+    for (let i = 0; i < samples; i++) {
+      const start = i * blockSize;
+      const end = Math.min(channelData.length, start + blockSize);
+      let sum = 0;
+
+      for (let j = start; j < end; j++) {
+        sum += Math.abs(channelData[j]);
+      }
+      const avg = end > start ? sum / (end - start) : 0;
+      peaks.push(Math.min(1, avg * 1.8));
+    }
+
+    return {
+      duration: audioBuffer.duration,
+      peaks,
+    };
+  } finally {
+    await audioContext.close();
+  }
+};
+
+export const trimAudioFile = async (
+  file: File,
+  startTime: number,
+  endTime: number
+): Promise<File> => {
+  if (endTime <= startTime) {
+    throw new Error('裁剪区间无效');
+  }
+
+  const audioContext = createBrowserAudioContext();
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    const startSample = Math.max(0, Math.floor(startTime * audioBuffer.sampleRate));
+    const endSample = Math.min(audioBuffer.length, Math.ceil(endTime * audioBuffer.sampleRate));
+
+    if (endSample - startSample <= 0) {
+      throw new Error('裁剪长度无效');
+    }
+
+    if (startSample === 0 && endSample === audioBuffer.length) {
+      return file;
+    }
+
+    const trimmedLength = endSample - startSample;
+    const trimmedBuffer = audioContext.createBuffer(
+      audioBuffer.numberOfChannels,
+      trimmedLength,
+      audioBuffer.sampleRate
+    );
+
+    for (let channel = 0; channel < audioBuffer.numberOfChannels; channel++) {
+      const sourceChannel = audioBuffer.getChannelData(channel).slice(startSample, endSample);
+      trimmedBuffer.copyToChannel(sourceChannel, channel, 0);
+    }
+
+    const wavBuffer = bufferToWav(trimmedBuffer);
+    const outputBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+    const trimmedName = file.name.replace(/\.[^/.]+$/, '') + '_trimmed.wav';
+    return new File([outputBlob], trimmedName, { type: 'audio/wav' });
+  } finally {
+    await audioContext.close();
+  }
 };
 
 // Simple WAV encoder

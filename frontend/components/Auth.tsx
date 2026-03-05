@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { sendVerificationCode, login, User } from '../services/api';
 
@@ -51,6 +50,7 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
       setError('请填写完整信息');
       return;
     }
+
     if (code.length !== 6) {
       setError('请输入6位验证码');
       return;
@@ -70,41 +70,36 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-10 animate-in fade-in zoom-in duration-500">
-      <div className="glass-morphism rounded-3xl p-10 shadow-2xl border border-red-500/10 relative overflow-hidden bg-black/40">
-        {/* 背景装饰 */}
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-red-600/10 blur-[60px] rounded-full"></div>
-        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-rose-600/10 blur-[60px] rounded-full"></div>
+    <div className="mx-auto max-w-[420px] pt-1 pb-5">
+      <div className="glass-panel rounded-[26px] px-6 py-6 sm:px-7 sm:py-7 relative overflow-hidden">
+        <div className="absolute -top-20 -right-16 w-32 h-32 rounded-full bg-[rgba(175,143,139,0.22)] blur-3xl"></div>
+        <div className="absolute -bottom-20 -left-16 w-36 h-36 rounded-full bg-[rgba(124,145,135,0.2)] blur-3xl"></div>
 
         <div className="relative z-10">
-          <div className="text-center mb-10">
-            <div className="w-16 h-16 bg-gradient-to-tr from-red-600 to-rose-700 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-red-900/40 border border-red-400/20">
-              <i className="fas fa-user-shield text-white text-2xl"></i>
+          <div className="text-center mb-6">
+            <div className="mx-auto mb-3.5 w-12 h-12 rounded-xl panel-subtle flex items-center justify-center">
+              <i className="fas fa-user-shield text-lg text-[var(--accent-ink)]"></i>
             </div>
-            <h2 className="text-3xl font-extrabold text-white mb-2">
-              {isLogin ? '欢迎回来' : '开启克隆之旅'}
-            </h2>
-            <p className="text-gray-400 text-sm font-light">使用手机号码快速{isLogin ? '登录' : '注册'}</p>
+            <h2 className="text-[30px] leading-tight text-[var(--text-primary)]">{isLogin ? '欢迎回来' : '创建账号'}</h2>
+            <p className="text-[13px] text-[var(--text-secondary)] mt-1.5">使用手机验证码快速{isLogin ? '登录' : '注册'}</p>
           </div>
 
-          {/* 错误提示 */}
           {error && (
-            <div className="mb-6 p-3 bg-red-900/30 border border-red-500/30 rounded-xl text-red-400 text-sm text-center">
+            <div className="info-block mb-5 text-[var(--error)] border-[rgba(185,119,112,0.35)] bg-[rgba(185,119,112,0.14)]">
+              <i className="fas fa-circle-exclamation mr-2"></i>
               {error}
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-500 ml-1 uppercase tracking-widest">手机号码</label>
+              <label className="muted-label">手机号码</label>
               <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600">
-                  <i className="fas fa-mobile-alt"></i>
-                </span>
+                <i className="fas fa-mobile-screen-button absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"></i>
                 <input
                   type="tel"
                   placeholder="请输入手机号"
-                  className="w-full bg-black/40 border border-gray-800 rounded-xl py-3.5 pl-11 pr-4 text-white focus:ring-1 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder:text-gray-700"
+                  className="app-input input-with-icon"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   maxLength={11}
@@ -113,29 +108,25 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-500 ml-1 uppercase tracking-widest">验证码</label>
-              <div className="flex gap-3">
-                <div className="relative flex-1">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600">
-                    <i className="fas fa-shield-alt"></i>
-                  </span>
+              <label className="muted-label">验证码</label>
+              <div className="grid grid-cols-[1fr_auto] gap-2.5">
+                <div className="relative">
+                  <i className="fas fa-shield-halved absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]"></i>
                   <input
                     type="text"
                     placeholder="6位验证码"
-                    className="w-full bg-black/40 border border-gray-800 rounded-xl py-3.5 pl-11 pr-4 text-white focus:ring-1 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder:text-gray-700"
+                    className="app-input input-with-icon"
                     value={code}
                     onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
                     maxLength={6}
                   />
                 </div>
+
                 <button
                   type="button"
                   disabled={countdown > 0 || sendingCode}
                   onClick={handleSendCode}
-                  className={`px-4 rounded-xl font-medium text-xs transition-all whitespace-nowrap min-w-[110px] flex items-center justify-center
-                    ${countdown > 0 || sendingCode
-                      ? 'bg-gray-900 text-gray-600 cursor-not-allowed border border-gray-800'
-                      : 'bg-white/5 text-red-400 border border-red-500/20 hover:bg-red-500/10'}`}
+                  className="secondary-button focus-ring min-w-[106px] px-3 text-xs font-semibold"
                 >
                   {sendingCode ? (
                     <i className="fas fa-spinner fa-spin"></i>
@@ -148,35 +139,37 @@ const Auth: React.FC<AuthProps> = ({ onLoginSuccess }) => {
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-4 bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white rounded-xl font-bold text-lg shadow-xl shadow-red-900/30 transition-all active:scale-[0.98] flex items-center justify-center gap-3"
-            >
+            <button type="submit" disabled={loading} className="action-button focus-ring flex items-center justify-center gap-2">
               {loading ? (
-                <i className="fas fa-spinner fa-spin"></i>
+                <>
+                  <i className="fas fa-spinner fa-spin"></i>
+                  提交中...
+                </>
+              ) : isLogin ? (
+                '立即登录'
               ) : (
-                isLogin ? '立即登录' : '立即注册'
+                '立即注册'
               )}
             </button>
           </form>
 
-          <div className="mt-8 text-center">
+          <div className="mt-4 text-center">
             <button
               onClick={() => setIsLogin(!isLogin)}
-              className="text-gray-500 hover:text-red-400 text-xs transition-colors tracking-wide"
+              className="ghost-button focus-ring h-9 px-4 text-xs font-semibold"
             >
-              {isLogin ? '还没有账号？立即注册' : '已有账号？返回登录'}
+              {isLogin ? '还没有账号？切换注册' : '已有账号？切换登录'}
             </button>
           </div>
         </div>
       </div>
 
-      <div className="mt-8 text-center text-gray-600 text-[10px] px-10 leading-relaxed uppercase tracking-tighter">
-        点击{isLogin ? '登录' : '注册'}即代表您同意我们的
-        <a href="#" className="text-red-500/50 hover:underline mx-1">服务协议</a>和
-        <a href="#" className="text-red-500/50 hover:underline mx-1">隐私政策</a>
-      </div>
+      <p className="mt-4 text-center text-[11px] text-[var(--text-muted)] leading-relaxed px-4">
+        点击{isLogin ? '登录' : '注册'}即表示你同意
+        <a href="#" className="mx-1 text-[var(--accent-ink)] hover:underline">服务协议</a>
+        与
+        <a href="#" className="mx-1 text-[var(--accent-ink)] hover:underline">隐私政策</a>
+      </p>
     </div>
   );
 };

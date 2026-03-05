@@ -138,3 +138,11 @@ export interface FileUrlResponse {
   url: string;
   expires_at: string;
 }
+
+// 收藏夹类型
+export interface AudioFavorite {
+  id: string;
+  name: string;
+  audioUrl: string; // Mock 数据的在线音频 URL
+  category: 'voice' | 'emotion'; // 音色收藏 or 情感收藏
+}
