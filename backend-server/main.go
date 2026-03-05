@@ -104,6 +104,12 @@ func main() {
 			protected.DELETE("/tasks/:id", handlers.DeleteTask)
 			protected.DELETE("/tasks", handlers.ClearTasks)
 
+			// Favorites
+			protected.GET("/favorites", handlers.ListFavorites)
+			protected.POST("/favorites", handlers.CreateFavorite)
+			protected.PATCH("/favorites/:id", handlers.UpdateFavorite)
+			protected.DELETE("/favorites/:id", handlers.DeleteFavorite)
+
 			// Credits
 			protected.GET("/credits", handlers.GetCredits)
 			protected.GET("/credits/logs", handlers.GetCreditLogs)

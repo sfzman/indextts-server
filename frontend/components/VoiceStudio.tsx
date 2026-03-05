@@ -1,14 +1,13 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { VoiceProject, EmotionType, EmotionVectors, CloneTask, emotionTypeToMode, TaskListItem, BackendTaskStatus, AudioFavorite } from '../types';
-import { fileToBase64, fileToDataUrl, trimAudioFile } from '../services/audioUtils';
-import { uploadAudioFile } from '../services/fileService';
+import { fileToBase64, trimAudioFile } from '../services/audioUtils';
+import { getAudioBlob, getAudioBlobUrl, uploadAudioFile } from '../services/fileService';
 import { createTask, getTasks, pollTaskUntilDone, deleteTask, clearTasks } from '../services/taskService';
-import { getAudioBlobUrl } from '../services/fileService';
 import { User, getCurrentUser } from '../services/api';
 import TaskList from './TaskList';
 import FavoritesPanel from './FavoritesPanel';
 import AudioWaveformEditor from './AudioWaveformEditor';
-import { addFavorite } from '../data/mockFavorites';
+import { addFavoriteByFileID } from '../services/favoriteService';
 
 const initialVectors: EmotionVectors = {
   happy: 0,
@@ -239,8 +238,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
 
   const handleUseVoiceFavorite = async (favorite: AudioFavorite) => {
     try {
-      const response = await fetch(favorite.audioUrl);
-      const blob = await response.blob();
+      const blob = await getAudioBlob(favorite.audioFileId);
       const file = new File([blob], `${favorite.name}.wav`, { type: 'audio/wav' });
       await processVoiceFile(file);
       setToast({ type: 'success', message: `已使用音色收藏：${favorite.name}` });
@@ -251,8 +249,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
 
   const handleUseEmotionFavorite = async (favorite: AudioFavorite) => {
     try {
-      const response = await fetch(favorite.audioUrl);
-      const blob = await response.blob();
+      const blob = await getAudioBlob(favorite.audioFileId);
       const file = new File([blob], `${favorite.name}.wav`, { type: 'audio/wav' });
       await processEmotionFile(file);
       setProject((prev) => ({ ...prev, emotionType: EmotionType.REFERENCE_AUDIO }));
@@ -290,8 +287,8 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
         fileForFavorite = await trimAudioFile(file, trimState.start, trimState.end);
       }
 
-      const dataUrl = await fileToDataUrl(fileForFavorite);
-      const result = addFavorite(category, getFavoriteDefaultName(prefix), dataUrl);
+      const uploadResult = await uploadAudioFile(fileForFavorite);
+      const result = await addFavoriteByFileID(category, getFavoriteDefaultName(prefix), uploadResult.id);
       setToast({
         type: 'success',
         message: result.added ? '已加入收藏' : '该音频已在收藏中',
@@ -302,13 +299,9 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   };
 
   const handleAddFavoriteFromHistory = useCallback(
-    async (category: 'voice' | 'emotion', audioUrl: string, nameHint: string) => {
+    async (category: 'voice' | 'emotion', audioFileId: string, nameHint: string) => {
       try {
-        const response = await fetch(audioUrl);
-        const blob = await response.blob();
-        const file = new File([blob], `${nameHint}.wav`, { type: blob.type || 'audio/wav' });
-        const dataUrl = await fileToDataUrl(file);
-        const result = addFavorite(category, nameHint, dataUrl);
+        const result = await addFavoriteByFileID(category, nameHint, audioFileId);
         setToast({
           type: 'success',
           message: result.added ? '已加入收藏' : '该音频已在收藏中',

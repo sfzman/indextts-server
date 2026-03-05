@@ -143,6 +143,24 @@ export interface FileUrlResponse {
 export interface AudioFavorite {
   id: string;
   name: string;
-  audioUrl: string; // Mock 数据的在线音频 URL
-  category: 'voice' | 'emotion'; // 音色收藏 or 情感收藏
+  category: 'voice' | 'emotion';
+  audioFileId: string;
+}
+
+export interface FavoriteItemResponse {
+  id: string;
+  name: string;
+  category: 'voice' | 'emotion';
+  audio_file_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface FavoriteListResponse {
+  favorites: FavoriteItemResponse[];
+}
+
+export interface CreateFavoriteResponse {
+  added: boolean;
+  favorite: FavoriteItemResponse;
 }

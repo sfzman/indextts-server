@@ -97,6 +97,12 @@ export function getFileContentUrl(fileId: string): string {
 
 // 获取带认证的音频 Blob URL
 export async function getAudioBlobUrl(fileId: string): Promise<string> {
+  const blob = await getAudioBlob(fileId);
+  return URL.createObjectURL(blob);
+}
+
+// 获取带认证的音频 Blob
+export async function getAudioBlob(fileId: string): Promise<Blob> {
   const token = getToken();
   if (!token) {
     throw new Error('未登录');
@@ -114,6 +120,5 @@ export async function getAudioBlobUrl(fileId: string): Promise<string> {
     throw new Error(data.error || '获取音频失败');
   }
 
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
+  return response.blob();
 }

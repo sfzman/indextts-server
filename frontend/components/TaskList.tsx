@@ -6,7 +6,7 @@ interface TaskListProps {
   tasks: CloneTask[];
   onDeleteTask: (id: string) => Promise<void> | void;
   onClearAll: () => Promise<void> | void;
-  onAddFavorite?: (category: 'voice' | 'emotion', audioUrl: string, nameHint: string) => Promise<void> | void;
+  onAddFavorite?: (category: 'voice' | 'emotion', audioFileId: string, nameHint: string) => Promise<void> | void;
 }
 
 const TASKS_PER_PAGE = 4;
@@ -195,10 +195,10 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, onDeleteTask, onClearAll, on
                   <div>
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <p className="muted-label">音色参考音频</p>
-                      {taskReferenceAudio && onAddFavorite && (
+                      {task.referenceAudioFileId && onAddFavorite && (
                         <button
                           onClick={() => {
-                            void onAddFavorite('voice', taskReferenceAudio, `任务${task.id.slice(0, 6)}音色`);
+                            void onAddFavorite('voice', task.referenceAudioFileId, `任务${task.id.slice(0, 6)}音色`);
                           }}
                           className="ghost-button focus-ring h-7 px-2.5 text-[11px] font-semibold"
                         >
@@ -220,10 +220,12 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, onDeleteTask, onClearAll, on
                     <div>
                       <div className="flex items-center justify-between gap-2 mb-1">
                         <p className="muted-label">情感参考音频</p>
-                        {taskEmotionAudio && onAddFavorite && (
+                        {task.emotionPromptFileId && onAddFavorite && (
                           <button
                             onClick={() => {
-                              void onAddFavorite('emotion', taskEmotionAudio, `任务${task.id.slice(0, 6)}情感`);
+                              if (task.emotionPromptFileId) {
+                                void onAddFavorite('emotion', task.emotionPromptFileId, `任务${task.id.slice(0, 6)}情感`);
+                              }
                             }}
                             className="ghost-button focus-ring h-7 px-2.5 text-[11px] font-semibold"
                           >
