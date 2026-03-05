@@ -1,15 +1,15 @@
 package services
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"path"
-	"time"
 
 	"backend-server/config"
 
 	"github.com/aliyun/aliyun-oss-go-sdk/oss"
-	"github.com/google/uuid"
 )
 
 var ossClient *oss.Client
@@ -34,19 +34,34 @@ func InitOSS() error {
 }
 
 // UploadFile uploads a file to OSS and returns the object key (not public URL)
+// Uses SHA256 hash of file content for deduplication
 func UploadFile(reader io.Reader, filename string, contentType string) (string, error) {
-	// Generate unique object key
-	ext := path.Ext(filename)
-	objectKey := fmt.Sprintf("indextts/audio/%s/%s%s",
-		time.Now().Format("2006/01/02"),
-		uuid.New().String(),
-		ext,
-	)
-
-	// Upload to OSS
-	err := ossBucket.PutObject(objectKey, reader, oss.ContentType(contentType))
+	// Read all file content to calculate hash
+	fileData, err := io.ReadAll(reader)
 	if err != nil {
-		return "", fmt.Errorf("failed to upload to OSS: %w", err)
+		return "", fmt.Errorf("failed to read file: %w", err)
+	}
+
+	// Calculate SHA256 hash
+	hash := sha256.Sum256(fileData)
+	hashStr := hex.EncodeToString(hash[:])
+
+	// Use hash as object key for deduplication
+	ext := path.Ext(filename)
+	objectKey := fmt.Sprintf("indextts/audio/%s%s", hashStr, ext)
+
+	// Check if file already exists
+	exists, err := ossBucket.IsObjectExist(objectKey)
+	if err != nil {
+		return "", fmt.Errorf("failed to check object existence: %w", err)
+	}
+
+	// Only upload if file doesn't exist
+	if !exists {
+		err = ossBucket.PutObject(objectKey, io.NopCloser(&bytesReader{data: fileData, offset: 0}), oss.ContentType(contentType))
+		if err != nil {
+			return "", fmt.Errorf("failed to upload to OSS: %w", err)
+		}
 	}
 
 	return objectKey, nil
@@ -68,19 +83,28 @@ func GetSignedURL(objectKey string, expireSeconds int64) (string, error) {
 }
 
 // UploadBytes uploads byte data to OSS and returns the object key
+// Uses SHA256 hash of file content for deduplication
 func UploadBytes(data []byte, filename string, contentType string) (string, error) {
-	ext := path.Ext(filename)
-	objectKey := fmt.Sprintf("indextts/audio/%s/%s%s",
-		time.Now().Format("2006/01/02"),
-		uuid.New().String(),
-		ext,
-	)
+	// Calculate SHA256 hash
+	hash := sha256.Sum256(data)
+	hashStr := hex.EncodeToString(hash[:])
 
-	err := ossBucket.PutObject(objectKey, io.NopCloser(
-		&bytesReader{data: data, offset: 0},
-	), oss.ContentType(contentType))
+	// Use hash as object key for deduplication
+	ext := path.Ext(filename)
+	objectKey := fmt.Sprintf("indextts/audio/%s%s", hashStr, ext)
+
+	// Check if file already exists
+	exists, err := ossBucket.IsObjectExist(objectKey)
 	if err != nil {
-		return "", fmt.Errorf("failed to upload to OSS: %w", err)
+		return "", fmt.Errorf("failed to check object existence: %w", err)
+	}
+
+	// Only upload if file doesn't exist
+	if !exists {
+		err = ossBucket.PutObject(objectKey, io.NopCloser(&bytesReader{data: data, offset: 0}), oss.ContentType(contentType))
+		if err != nil {
+			return "", fmt.Errorf("failed to upload to OSS: %w", err)
+		}
 	}
 
 	return objectKey, nil

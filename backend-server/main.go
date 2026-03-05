@@ -101,6 +101,8 @@ func main() {
 			protected.POST("/tasks", handlers.CreateTask)
 			protected.GET("/tasks", handlers.ListTasks)
 			protected.GET("/tasks/:id", handlers.GetTask)
+			protected.DELETE("/tasks/:id", handlers.DeleteTask)
+			protected.DELETE("/tasks", handlers.ClearTasks)
 
 			// Credits
 			protected.GET("/credits", handlers.GetCredits)

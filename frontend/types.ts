@@ -48,6 +48,11 @@ export interface CloneTask {
   status: TaskStatus;
   script: string;
   audioUrl: string | null;
+  referenceAudioFileId: string;
+  emotionMode: EmotionMode;
+  emotionPromptFileId?: string;
+  emotionVector?: number[];
+  emotionAlpha?: number;
   createdAt: number;
   errorMessage?: string;
 }
@@ -101,6 +106,11 @@ export interface TaskListItem {
   id: string;
   status: BackendTaskStatus;
   text: string;
+  reference_audio_file_id: string;
+  emotion_mode: EmotionMode;
+  emotion_prompt_file_id?: string;
+  emotion_vector?: string;
+  emotion_alpha?: number;
   result_audio_file_id?: string;
   error_message?: string;
   created_at: string;

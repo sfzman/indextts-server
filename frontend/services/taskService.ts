@@ -69,6 +69,20 @@ export async function getTasks(params: {
   return request<TaskListResponse>(`/tasks${query ? `?${query}` : ''}`);
 }
 
+// 删除单条任务历史
+export async function deleteTask(taskId: string): Promise<{ id: string; deleted: boolean }> {
+  return request<{ id: string; deleted: boolean }>(`/tasks/${taskId}`, {
+    method: 'DELETE',
+  });
+}
+
+// 清空当前用户所有任务历史
+export async function clearTasks(): Promise<{ deleted: number }> {
+  return request<{ deleted: number }>('/tasks', {
+    method: 'DELETE',
+  });
+}
+
 // 轮询任务状态直到完成
 export async function pollTaskUntilDone(
   taskId: string,

@@ -203,6 +203,8 @@ type TaskListItem struct {
 	ReferenceAudioFileID string             `json:"reference_audio_file_id"`
 	EmotionMode          models.EmotionMode `json:"emotion_mode"`
 	EmotionPromptFileID  string             `json:"emotion_prompt_file_id,omitempty"`
+	EmotionVector        string             `json:"emotion_vector,omitempty"`
+	EmotionAlpha         *float64           `json:"emotion_alpha,omitempty"`
 	ResultAudioFileID    string             `json:"result_audio_file_id,omitempty"`
 	ErrorMessage         string             `json:"error_message,omitempty"`
 	CreatedAt            string             `json:"created_at"`
@@ -268,6 +270,8 @@ func ListTasks(c *gin.Context) {
 			ReferenceAudioFileID: task.ReferenceAudioFileID,
 			EmotionMode:          task.EmotionMode,
 			EmotionPromptFileID:  task.EmotionPromptFileID,
+			EmotionVector:        task.EmotionVector,
+			EmotionAlpha:         task.EmotionAlpha,
 			ResultAudioFileID:    task.ResultAudioFileID,
 			ErrorMessage:         task.ErrorMessage,
 			CreatedAt:            task.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
@@ -280,6 +284,61 @@ func ListTasks(c *gin.Context) {
 		"total":     total,
 		"page":      page,
 		"page_size": pageSize,
+	})
+}
+
+// DeleteTask deletes one task by ID for current user
+func DeleteTask(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
+	id := c.Param("id")
+	result := models.DB.Where("id = ? AND user_id = ?", id, userID).Delete(&models.Task{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to delete task: " + result.Error.Error(),
+		})
+		return
+	}
+
+	if result.RowsAffected == 0 {
+		c.JSON(http.StatusNotFound, gin.H{
+			"error": "Task not found",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"id":      id,
+		"deleted": true,
+	})
+}
+
+// ClearTasks deletes all tasks for current user
+func ClearTasks(c *gin.Context) {
+	userID := middleware.GetUserID(c)
+	if userID == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"error": "User not authenticated",
+		})
+		return
+	}
+
+	result := models.DB.Where("user_id = ?", userID).Delete(&models.Task{})
+	if result.Error != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to clear tasks: " + result.Error.Error(),
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"deleted": result.RowsAffected,
 	})
 }
 

@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { VoiceProject, EmotionType, EmotionVectors, CloneTask, emotionTypeToMode, TaskListItem, BackendTaskStatus } from '../types';
 import { fileToBase64 } from '../services/audioUtils';
 import { uploadAudioFile } from '../services/fileService';
-import { createTask, getTasks, pollTaskUntilDone } from '../services/taskService';
+import { createTask, getTasks, pollTaskUntilDone, deleteTask, clearTasks } from '../services/taskService';
 import { getAudioBlobUrl } from '../services/fileService';
 import { User, getCurrentUser } from '../services/api';
 import TaskList from './TaskList';
@@ -95,6 +95,18 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
       const frontendTasks: CloneTask[] = await Promise.all(
         response.tasks.map(async (task: TaskListItem): Promise<CloneTask> => {
           let audioUrl: string | null = null;
+          let emotionVector: number[] | undefined;
+
+          if (task.emotion_vector) {
+            try {
+              const parsed = JSON.parse(task.emotion_vector);
+              if (Array.isArray(parsed)) {
+                emotionVector = parsed;
+              }
+            } catch {
+              // Ignore invalid stored vector data
+            }
+          }
 
           // 如果任务已完成且有结果文件，获取音频 URL
           if (task.status === 'completed' && task.result_audio_file_id) {
@@ -110,6 +122,11 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
             status: task.status === 'pending' ? 'processing' : task.status,
             script: task.text,
             audioUrl,
+            referenceAudioFileId: task.reference_audio_file_id,
+            emotionMode: task.emotion_mode,
+            emotionPromptFileId: task.emotion_prompt_file_id,
+            emotionVector,
+            emotionAlpha: task.emotion_alpha,
             createdAt: new Date(task.created_at).getTime(),
             errorMessage: task.error_message,
           };
@@ -126,6 +143,35 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+
+  const handleDeleteTask = useCallback(async (id: string) => {
+    try {
+      await deleteTask(id);
+      setTasks(prev => prev.filter(t => t.id !== id));
+      setTasksTotal(prev => Math.max(0, prev - 1));
+      setToast({ type: 'success', message: '历史记录已删除' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '删除失败';
+      setToast({ type: 'error', message: errorMessage });
+    }
+  }, []);
+
+  const handleClearAllTasks = useCallback(async () => {
+    if (!confirm("清空全部任务历史？")) {
+      return;
+    }
+
+    try {
+      await clearTasks();
+      setTasks([]);
+      setTasksTotal(0);
+      setTasksPage(1);
+      setToast({ type: 'success', message: '历史记录已清空' });
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : '清空失败';
+      setToast({ type: 'error', message: errorMessage });
+    }
+  }, []);
 
   const processVoiceFile = async (file: File) => {
     if (!file.type.startsWith('audio/')) {
@@ -259,6 +305,11 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
         status: 'processing',
         script: project.script,
         audioUrl: null,
+        referenceAudioFileId: voiceUploadResult.id,
+        emotionMode: emotionTypeToMode[project.emotionType],
+        emotionPromptFileId: emotionPromptFileId,
+        emotionVector,
+        emotionAlpha: project.emotionAlpha,
         createdAt: new Date(createResult.created_at).getTime(),
       };
       setTasks(prev => [newTask, ...prev]);
@@ -612,8 +663,8 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
           </h2>
           <TaskList 
             tasks={tasks} 
-            onDeleteTask={(id) => setTasks(prev => prev.filter(t => t.id !== id))} 
-            onClearAll={() => { if(confirm("清空全部任务历史？")) setTasks([]) }} 
+            onDeleteTask={handleDeleteTask}
+            onClearAll={handleClearAllTasks}
           />
         </div>
       </div>
