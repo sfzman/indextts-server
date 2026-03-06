@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // allowedAudioExtensions defines allowed audio file extensions
@@ -99,9 +102,60 @@ func UploadAudio(c *gin.Context) {
 		Size:        file.Size,
 	}
 
-	if err := models.DB.Create(&fileRecord).Error; err != nil {
+	createResult := models.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&fileRecord)
+	if createResult.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to save file record: " + err.Error(),
+			"error": "Failed to save file record: " + createResult.Error.Error(),
+		})
+		return
+	}
+
+	if createResult.RowsAffected == 0 {
+		var existing models.File
+		err := models.DB.Unscoped().First(&existing, "user_id = ? AND oss_key = ?", userID, ossKey).Error
+		if err == nil {
+			// Restore soft-deleted file metadata record for the same user.
+			if existing.DeletedAt.Valid {
+				if err := models.DB.Unscoped().
+					Model(&models.File{}).
+					Where("id = ?", existing.ID).
+					Updates(map[string]interface{}{
+						"filename":     file.Filename,
+						"content_type": contentType,
+						"size":         file.Size,
+						"deleted_at":   nil,
+					}).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"error": "Failed to restore existing file record: " + err.Error(),
+					})
+					return
+				}
+
+				if err := models.DB.First(&existing, "id = ?", existing.ID).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{
+						"error": "Failed to load restored file record: " + err.Error(),
+					})
+					return
+				}
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"id":       existing.ID,
+				"filename": existing.Filename,
+				"size":     existing.Size,
+			})
+			return
+		}
+
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "Identical file already exists under another account",
+			})
+			return
+		}
+
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"error": "Failed to load existing file record: " + err.Error(),
 		})
 		return
 	}

@@ -466,12 +466,11 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
         </div>
 
         <div className="xl:col-span-4 glass-panel rounded-[28px] p-5 md:p-6 space-y-5">
-          <div className="pb-4 border-b soft-divider flex items-center justify-between gap-3">
+          <div className="pb-4 border-b soft-divider">
             <div>
               <h2 className="text-2xl text-[var(--text-primary)]">克隆工作室</h2>
               <p className="text-sm text-[var(--text-secondary)] mt-1">上传参考音频、输入台词并配置情感，随后提交生成任务。</p>
             </div>
-            <span className="pill warning">$1.00 / 每次</span>
           </div>
 
           <div className="space-y-2">
@@ -710,19 +709,25 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
             )}
           </div>
 
-          <button onClick={generateVoice} disabled={isProcessing} className="action-button focus-ring flex items-center justify-center gap-2">
-            {isProcessing ? (
-              <>
-                <i className="fas fa-spinner fa-spin"></i>
-                正在生成克隆语音...
-              </>
-            ) : (
-              <>
-                <i className="fas fa-bolt"></i>
-                提交克隆任务
-              </>
-            )}
-          </button>
+          <div className="space-y-3">
+            <button onClick={generateVoice} disabled={isProcessing} className="action-button focus-ring flex items-center justify-center gap-2">
+              {isProcessing ? (
+                <>
+                  <i className="fas fa-spinner fa-spin"></i>
+                  正在生成克隆语音...
+                </>
+              ) : (
+                <>
+                  <i className="fas fa-bolt"></i>
+                  提交克隆任务
+                </>
+              )}
+            </button>
+            <p className="text-center text-[11px] text-[var(--text-muted)]">
+              <i className="fas fa-coins text-[var(--accent-gold)] mr-1"></i>
+              每次任务消耗 10 积分（约 $1.00）
+            </p>
+          </div>
         </div>
 
         <div className="xl:col-span-4 glass-panel rounded-[28px] p-5 md:p-6 flex flex-col h-[680px]">

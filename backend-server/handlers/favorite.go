@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // FavoriteResponse represents favorite data returned to frontend
@@ -164,9 +165,26 @@ func CreateFavorite(c *gin.Context) {
 		AudioFileID: req.AudioFileID,
 	}
 
-	if err := models.DB.Create(&favorite).Error; err != nil {
+	createResult := models.DB.Clauses(clause.OnConflict{DoNothing: true}).Create(&favorite)
+	if createResult.Error != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
-			"error": "Failed to create favorite: " + err.Error(),
+			"error": "Failed to create favorite: " + createResult.Error.Error(),
+		})
+		return
+	}
+
+	if createResult.RowsAffected == 0 {
+		var current models.Favorite
+		if err := models.DB.First(&current, "user_id = ? AND category = ? AND audio_file_id = ?", userID, category, req.AudioFileID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{
+				"error": "Failed to load existing favorite: " + err.Error(),
+			})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"added":    false,
+			"favorite": buildFavoriteResponse(current),
 		})
 		return
 	}
