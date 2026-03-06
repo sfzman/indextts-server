@@ -6,10 +6,14 @@ import { getAudioBlobUrl } from '../services/fileService';
 interface FavoritesPanelProps {
   onUseVoice: (favorite: AudioFavorite) => void;
   onUseEmotion: (favorite: AudioFavorite) => void;
+  activeTab?: 'voice' | 'emotion';
+  onActiveTabChange?: (tab: 'voice' | 'emotion') => void;
 }
 
-const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotion }) => {
-  const [activeTab, setActiveTab] = useState<'voice' | 'emotion'>('voice');
+const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotion, activeTab: externalActiveTab, onActiveTabChange }) => {
+  const [internalActiveTab, setInternalActiveTab] = useState<'voice' | 'emotion'>('voice');
+  const activeTab = externalActiveTab ?? internalActiveTab;
+  const setActiveTab = onActiveTabChange ?? setInternalActiveTab;
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);

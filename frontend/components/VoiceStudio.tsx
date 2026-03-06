@@ -83,6 +83,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   const [emotionTrim, setEmotionTrim] = useState({ start: 0, end: 0, duration: 0 });
   const [tasksPage, setTasksPage] = useState(1);
   const [, setTasksTotal] = useState(0);
+  const [favoritesTab, setFavoritesTab] = useState<'voice' | 'emotion'>('voice');
 
   const voiceInputRef = useRef<HTMLInputElement>(null);
   const emotionInputRef = useRef<HTMLInputElement>(null);
@@ -305,6 +306,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
       const favoriteName = getFilenameBase(file.name) || fallbackName;
       const uploadResult = await uploadAudioFile(fileForFavorite);
       const result = await addFavoriteByFileID(category, favoriteName, uploadResult.id);
+      setFavoritesTab(category);
       setToast({
         type: 'success',
         message: result.added ? '已加入收藏' : '该音频已在收藏中',
@@ -318,6 +320,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
     async (category: 'voice' | 'emotion', audioFileId: string, nameHint: string) => {
       try {
         const result = await addFavoriteByFileID(category, nameHint, audioFileId);
+        setFavoritesTab(category);
         setToast({
           type: 'success',
           message: result.added ? '已加入收藏' : '该音频已在收藏中',
@@ -450,7 +453,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   };
 
   return (
-    <div className="space-y-5 pb-12 relative">
+    <>
       {toast && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[110]">
           <div className={`toast ${toast.type === 'success' ? 'success' : 'error'}`}>
@@ -460,9 +463,11 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
         </div>
       )}
 
+      <div className="space-y-5 pb-12 relative">
+
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
         <div className="hidden xl:block xl:col-span-4">
-          <FavoritesPanel onUseVoice={handleUseVoiceFavorite} onUseEmotion={handleUseEmotionFavorite} />
+          <FavoritesPanel onUseVoice={handleUseVoiceFavorite} onUseEmotion={handleUseEmotionFavorite} activeTab={favoritesTab} onActiveTabChange={setFavoritesTab} />
         </div>
 
         <div className="xl:col-span-4 glass-panel rounded-[28px] p-5 md:p-6 space-y-5">
@@ -747,10 +752,11 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
         </div>
 
         <div className="xl:hidden xl:col-span-12">
-          <FavoritesPanel onUseVoice={handleUseVoiceFavorite} onUseEmotion={handleUseEmotionFavorite} />
+          <FavoritesPanel onUseVoice={handleUseVoiceFavorite} onUseEmotion={handleUseEmotionFavorite} activeTab={favoritesTab} onActiveTabChange={setFavoritesTab} />
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 
