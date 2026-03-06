@@ -132,7 +132,9 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, onDeleteTask, onClearAll, on
                       {new Date(task.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                   </div>
-                  <p className="text-[11px] text-[var(--text-secondary)] font-medium">任务 ID: {task.id.slice(0, 8)}</p>
+                  <p className="text-[12px] text-[var(--text-secondary)] font-medium line-clamp-2 break-words">
+                    {task.script}
+                  </p>
                 </div>
 
                 <div className="flex gap-2 shrink-0">
@@ -171,11 +173,6 @@ const TaskList: React.FC<TaskListProps> = ({ tasks, onDeleteTask, onClearAll, on
 
               {isExpanded && (
                 <div className="mt-3 pt-3 border-t soft-divider space-y-3">
-                  <div>
-                    <p className="muted-label mb-1">文本脚本</p>
-                    <p className="text-[13px] leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap break-words">{task.script}</p>
-                  </div>
-
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <div className="panel-subtle rounded-xl p-2.5">
                       <p className="muted-label mb-1">情感模式</p>

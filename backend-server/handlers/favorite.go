@@ -112,8 +112,37 @@ func CreateFavorite(c *gin.Context) {
 	category := models.FavoriteCategory(req.Category)
 
 	var existing models.Favorite
-	err := models.DB.First(&existing, "user_id = ? AND category = ? AND audio_file_id = ?", userID, category, req.AudioFileID).Error
+	err := models.DB.Unscoped().First(&existing, "user_id = ? AND category = ? AND audio_file_id = ?", userID, category, req.AudioFileID).Error
 	if err == nil {
+		// Restore soft-deleted record to avoid unique index conflict
+		if existing.DeletedAt.Valid {
+			if err := models.DB.Unscoped().
+				Model(&models.Favorite{}).
+				Where("id = ?", existing.ID).
+				Updates(map[string]interface{}{
+					"name":       trimmedName,
+					"deleted_at": nil,
+				}).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "Failed to restore favorite: " + err.Error(),
+				})
+				return
+			}
+
+			if err := models.DB.First(&existing, "id = ?", existing.ID).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{
+					"error": "Failed to load restored favorite: " + err.Error(),
+				})
+				return
+			}
+
+			c.JSON(http.StatusCreated, gin.H{
+				"added":    true,
+				"favorite": buildFavoriteResponse(existing),
+			})
+			return
+		}
+
 		c.JSON(http.StatusOK, gin.H{
 			"added":    false,
 			"favorite": buildFavoriteResponse(existing),

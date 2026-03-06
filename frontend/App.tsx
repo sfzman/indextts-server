@@ -3,6 +3,22 @@ import VoiceStudio from './components/VoiceStudio';
 import Auth from './components/Auth';
 import { User, getCachedUser, getCurrentUser, logout, isAuthenticated } from './services/api';
 
+declare const __BUILD_TIME__: string;
+
+const buildDate = new Date(__BUILD_TIME__);
+const lastBuildLabel = Number.isNaN(buildDate.getTime())
+  ? __BUILD_TIME__
+  : new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+    timeZone: 'Asia/Shanghai',
+  }).format(buildDate);
+
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -162,6 +178,7 @@ const App: React.FC = () => {
             <span className="pill"><i className="fas fa-sliders text-[var(--accent-ink)]"></i> 情感可控</span>
           </div>
           <p>© 2026 VoxClone / IndexTTS. 保留所有权利。</p>
+          <p className="mt-1">Last build: {lastBuildLabel} (UTC+8)</p>
         </footer>
       </div>
     </div>

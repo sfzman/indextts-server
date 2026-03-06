@@ -48,6 +48,20 @@ const FAVORITE_TIME_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   minute: '2-digit',
 });
 
+const getFilenameBase = (filename: string): string => {
+  const normalized = filename.split(/[\\/]/).pop()?.trim() || '';
+  if (!normalized) {
+    return '';
+  }
+
+  const lastDotIndex = normalized.lastIndexOf('.');
+  if (lastDotIndex <= 0) {
+    return normalized;
+  }
+
+  return normalized.slice(0, lastDotIndex).trim();
+};
+
 const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   const [project, setProject] = useState<VoiceProject>({
     voiceReference: null,
@@ -287,8 +301,10 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
         fileForFavorite = await trimAudioFile(file, trimState.start, trimState.end);
       }
 
+      const fallbackName = getFavoriteDefaultName(prefix);
+      const favoriteName = getFilenameBase(file.name) || fallbackName;
       const uploadResult = await uploadAudioFile(fileForFavorite);
-      const result = await addFavoriteByFileID(category, getFavoriteDefaultName(prefix), uploadResult.id);
+      const result = await addFavoriteByFileID(category, favoriteName, uploadResult.id);
       setToast({
         type: 'success',
         message: result.added ? '已加入收藏' : '该音频已在收藏中',
