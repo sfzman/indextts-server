@@ -82,7 +82,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   const [voiceTrim, setVoiceTrim] = useState({ start: 0, end: 0, duration: 0 });
   const [emotionTrim, setEmotionTrim] = useState({ start: 0, end: 0, duration: 0 });
   const [tasksPage, setTasksPage] = useState(1);
-  const [tasksTotal, setTasksTotal] = useState(0);
+  const [, setTasksTotal] = useState(0);
 
   const voiceInputRef = useRef<HTMLInputElement>(null);
   const emotionInputRef = useRef<HTMLInputElement>(null);
@@ -726,12 +726,11 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
         </div>
 
         <div className="xl:col-span-4 glass-panel rounded-[28px] p-5 md:p-6 flex flex-col h-[680px]">
-          <div className="pb-4 mb-4 border-b soft-divider flex items-end justify-between gap-2">
+          <div className="pb-4 mb-4 border-b soft-divider">
             <div>
               <h2 className="text-2xl text-[var(--text-primary)]">生成历史</h2>
               <p className="text-[12px] text-[var(--text-secondary)] mt-1">查看状态、试听结果并管理任务。</p>
             </div>
-            <span className="pill">共 {tasksTotal} 条</span>
           </div>
 
           <TaskList

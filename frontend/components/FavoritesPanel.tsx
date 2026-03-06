@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioFavorite } from '../types';
 import { deleteFavorite, favoritesUpdatedEventName, listFavorites, updateFavoriteName } from '../services/favoriteService';
-import { getAudioBlob } from '../services/fileService';
+import { getAudioBlobUrl } from '../services/fileService';
 
 interface FavoritesPanelProps {
   onUseVoice: (favorite: AudioFavorite) => void;
@@ -10,42 +10,18 @@ interface FavoritesPanelProps {
 
 const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotion }) => {
   const [activeTab, setActiveTab] = useState<'voice' | 'emotion'>('voice');
-  const [playingId, setPlayingId] = useState<string | null>(null);
-  const [audioRef, setAudioRef] = useState<HTMLAudioElement | null>(null);
-  const [audioObjectUrl, setAudioObjectUrl] = useState<string | null>(null);
-  const audioRefRef = useRef<HTMLAudioElement | null>(null);
-  const audioObjectUrlRef = useRef<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
   const [favorites, setFavorites] = useState<AudioFavorite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    audioRefRef.current = audioRef;
-  }, [audioRef]);
-
-  useEffect(() => {
-    audioObjectUrlRef.current = audioObjectUrl;
-  }, [audioObjectUrl]);
-
-  const stopPlayback = useCallback(() => {
-    const currentAudio = audioRefRef.current;
-    const currentUrl = audioObjectUrlRef.current;
-
-    if (currentAudio) {
-      currentAudio.pause();
-    }
-    if (currentUrl) {
-      URL.revokeObjectURL(currentUrl);
-    }
-
-    audioRefRef.current = null;
-    audioObjectUrlRef.current = null;
-    setPlayingId(null);
-    setAudioRef(null);
-    setAudioObjectUrl(null);
-  }, []);
+  const [audioUrlMap, setAudioUrlMap] = useState<Record<string, string>>({});
+  const [audioLoadingMap, setAudioLoadingMap] = useState<Record<string, boolean>>({});
+  const [audioErrorMap, setAudioErrorMap] = useState<Record<string, string>>({});
+  const audioUrlMapRef = useRef<Record<string, string>>({});
+  const audioErrorMapRef = useRef<Record<string, string>>({});
+  const loadingIdsRef = useRef<Set<string>>(new Set());
+  const isUnmountedRef = useRef(false);
 
   const loadFavorites = useCallback(async () => {
     try {
@@ -63,15 +39,129 @@ const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotio
     void loadFavorites();
   }, [loadFavorites, refreshKey]);
 
+  const filteredFavorites = useMemo(
+    () => favorites.filter((item) => item.category === activeTab),
+    [favorites, activeTab]
+  );
+  const voiceCount = useMemo(() => favorites.filter((item) => item.category === 'voice').length, [favorites]);
+  const emotionCount = useMemo(() => favorites.filter((item) => item.category === 'emotion').length, [favorites]);
+
   useEffect(() => {
-    stopPlayback();
-  }, [activeTab, stopPlayback]);
+    audioUrlMapRef.current = audioUrlMap;
+  }, [audioUrlMap]);
+
+  useEffect(() => {
+    audioErrorMapRef.current = audioErrorMap;
+  }, [audioErrorMap]);
+
+  useEffect(() => {
+    isUnmountedRef.current = false;
+    return () => {
+      isUnmountedRef.current = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    // Revoke stale object URLs when list changes.
+    setAudioUrlMap((prev) => {
+      const favoriteIds = new Set(favorites.map((item) => item.id));
+      let changed = false;
+      const next: Record<string, string> = {};
+
+      Object.entries(prev).forEach(([id, url]) => {
+        if (favoriteIds.has(id)) {
+          next[id] = url;
+        } else {
+          URL.revokeObjectURL(url);
+          changed = true;
+        }
+      });
+
+      return changed ? next : prev;
+    });
+
+    const favoriteIds = new Set(favorites.map((item) => item.id));
+    loadingIdsRef.current.forEach((id) => {
+      if (!favoriteIds.has(id)) {
+        loadingIdsRef.current.delete(id);
+      }
+    });
+
+    setAudioLoadingMap((prev) => {
+      const favoriteIds = new Set(favorites.map((item) => item.id));
+      const next: Record<string, boolean> = {};
+      Object.entries(prev).forEach(([id, loading]) => {
+        if (favoriteIds.has(id) && loading) {
+          next[id] = loading;
+        }
+      });
+      return next;
+    });
+
+    setAudioErrorMap((prev) => {
+      const favoriteIds = new Set(favorites.map((item) => item.id));
+      const next: Record<string, string> = {};
+      Object.entries(prev).forEach(([id, error]) => {
+        if (favoriteIds.has(id) && error) {
+          next[id] = error;
+        }
+      });
+      return next;
+    });
+  }, [favorites]);
+
+  useEffect(() => {
+    filteredFavorites.forEach((favorite) => {
+      if (audioUrlMapRef.current[favorite.id]) {
+        return;
+      }
+      if (audioErrorMapRef.current[favorite.id]) {
+        return;
+      }
+      if (loadingIdsRef.current.has(favorite.id)) {
+        return;
+      }
+
+      loadingIdsRef.current.add(favorite.id);
+      setAudioLoadingMap((prev) => ({ ...prev, [favorite.id]: true }));
+      setAudioErrorMap((prev) => ({ ...prev, [favorite.id]: '' }));
+
+      void (async () => {
+        try {
+          const url = await getAudioBlobUrl(favorite.audioFileId);
+          if (isUnmountedRef.current) {
+            URL.revokeObjectURL(url);
+            return;
+          }
+
+          setAudioUrlMap((prev) => {
+            const previousUrl = prev[favorite.id];
+            if (previousUrl && previousUrl !== url) {
+              URL.revokeObjectURL(previousUrl);
+            }
+            return { ...prev, [favorite.id]: url };
+          });
+        } catch (error) {
+          if (isUnmountedRef.current) {
+            return;
+          }
+          const message = error instanceof Error ? error.message : '加载音频失败';
+          setAudioErrorMap((prev) => ({ ...prev, [favorite.id]: message }));
+        } finally {
+          loadingIdsRef.current.delete(favorite.id);
+          if (!isUnmountedRef.current) {
+            setAudioLoadingMap((prev) => ({ ...prev, [favorite.id]: false }));
+          }
+        }
+      })();
+    });
+  }, [filteredFavorites]);
 
   useEffect(() => {
     return () => {
-      stopPlayback();
+      Object.values(audioUrlMapRef.current).forEach((url) => URL.revokeObjectURL(url));
     };
-  }, [stopPlayback]);
+  }, []);
 
   useEffect(() => {
     const handleFavoritesUpdated = () => {
@@ -82,44 +172,6 @@ const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotio
       window.removeEventListener(favoritesUpdatedEventName, handleFavoritesUpdated);
     };
   }, []);
-
-  const filteredFavorites = useMemo(
-    () => favorites.filter((item) => item.category === activeTab),
-    [favorites, activeTab]
-  );
-  const voiceCount = useMemo(() => favorites.filter((item) => item.category === 'voice').length, [favorites]);
-  const emotionCount = useMemo(() => favorites.filter((item) => item.category === 'emotion').length, [favorites]);
-
-  const handlePlay = async (favorite: AudioFavorite, e: React.MouseEvent) => {
-    e.stopPropagation();
-
-    if (playingId === favorite.id) {
-      stopPlayback();
-      return;
-    }
-
-    stopPlayback();
-
-    try {
-      const blob = await getAudioBlob(favorite.audioFileId);
-      const objectUrl = URL.createObjectURL(blob);
-      const newAudio = new Audio(objectUrl);
-      await newAudio.play();
-
-      setPlayingId(favorite.id);
-      setAudioRef(newAudio);
-      setAudioObjectUrl(objectUrl);
-
-      newAudio.onended = () => {
-        setPlayingId(null);
-        setAudioRef(null);
-        URL.revokeObjectURL(objectUrl);
-        setAudioObjectUrl((prev) => (prev === objectUrl ? null : prev));
-      };
-    } catch {
-      stopPlayback();
-    }
-  };
 
   const handleUse = (favorite: AudioFavorite, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -144,9 +196,6 @@ const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotio
 
     try {
       await deleteFavorite(favorite.id);
-      if (playingId === favorite.id) {
-        stopPlayback();
-      }
       setFavorites((prev) => prev.filter((item) => item.id !== favorite.id));
     } catch (error) {
       console.error('删除收藏失败:', error);
@@ -186,10 +235,7 @@ const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotio
   return (
     <div className="glass-panel rounded-[28px] p-5 xl:p-6 h-[680px] flex flex-col">
       <div className="pb-4 mb-4 border-b soft-divider">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-2xl text-[var(--text-primary)]">收藏音频</h2>
-          <span className="pill">{filteredFavorites.length} 条</span>
-        </div>
+        <h2 className="text-2xl text-[var(--text-primary)]">收藏音频</h2>
         <p className="text-[12px] text-[var(--text-secondary)] mt-2">从收藏库快速填充当前任务的音色或情感参考。</p>
       </div>
 
@@ -222,17 +268,7 @@ const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotio
 
         {filteredFavorites.map((favorite) => (
           <div key={favorite.id} className="glass-panel-strong rounded-2xl p-3 border border-[rgba(124,112,104,0.2)] group">
-            <div className="flex items-center gap-2.5">
-              <button
-                onClick={(e) => {
-                  void handlePlay(favorite, e);
-                }}
-                className="secondary-button focus-ring h-9 w-9 shrink-0"
-                title={playingId === favorite.id ? '暂停' : '试听'}
-              >
-                <i className={`fas ${playingId === favorite.id ? 'fa-pause' : 'fa-play'} text-xs`}></i>
-              </button>
-
+            <div className="flex items-start gap-2.5">
               <div className="min-w-0 flex-grow">
                 {editingId === favorite.id ? (
                   <input
@@ -277,6 +313,16 @@ const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotio
               </div>
             </div>
 
+            <div className="audio-surface mt-2">
+              {audioUrlMap[favorite.id] ? (
+                <audio src={audioUrlMap[favorite.id]} controls className="h-9" />
+              ) : (
+                <p className="text-[12px] text-[var(--text-muted)] py-1.5">
+                  {audioLoadingMap[favorite.id] ? '加载中...' : (audioErrorMap[favorite.id] || '音频加载失败')}
+                </p>
+              )}
+            </div>
+
             <button
               onClick={(e) => handleUse(favorite, e)}
               className="action-button focus-ring mt-2 h-10 text-sm"
@@ -289,7 +335,7 @@ const FavoritesPanel: React.FC<FavoritesPanelProps> = ({ onUseVoice, onUseEmotio
       </div>
 
       <p className="text-[11px] text-[var(--text-muted)] mt-4 pt-4 border-t soft-divider text-center">
-        双击收藏名可重命名，点击试听确认后再一键使用。
+        双击收藏名可重命名，可直接播放确认后再一键使用。
       </p>
     </div>
   );
