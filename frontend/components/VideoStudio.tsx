@@ -1,15 +1,24 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { getFileUrl, uploadMediaFile } from '../services/fileService';
+import AudioWaveformEditor from './AudioWaveformEditor';
+import { trimAudioFile } from '../services/audioUtils';
+import {
+  createVideoTask,
+  getVideoModels,
+  getVideoTasks,
+  type VideoModelOption,
+  type VideoTaskItemResponse
+} from '../services/videoService';
 
-type VideoResolution = '720P' | '1080P';
-type VideoDuration = 5 | 10 | 15;
+type VideoResolution = '480P' | '720P' | '1080P';
+type VideoDuration = number;
 type VideoTaskStatus = 'processing' | 'completed' | 'failed';
-type VideoModel = 'Wan 2.6' | 'Wan 2.5';
 
 interface VideoTask {
   id: string;
   status: VideoTaskStatus;
   prompt: string;
-  model: VideoModel;
+  modelCode: string;
   resolution: VideoResolution;
   duration: VideoDuration;
   startFrameName?: string;
@@ -20,40 +29,30 @@ interface VideoTask {
   errorMessage?: string;
 }
 
-const DEMO_VIDEO_URLS = [
-  'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4',
-  'https://www.w3schools.com/html/mov_bbb.mp4',
+const DEFAULT_VIDEO_MODELS: VideoModelOption[] = [
+  {
+    name: 'Wan 2.6',
+    code: 'wan2.6-i2v',
+    description: '万相2.6。新增多镜头叙事能力，同时支持自动配音和传入自定义音频文件。',
+  },
+  {
+    name: 'Wan 2.6 Flash',
+    code: 'wan2.6-i2v-flash',
+    description:
+      '万相2.6-图生视频-Flash，生成更快更高性价比。智能分镜调度支持多镜头叙事，多人稳定对话，更自然真实音色，最高支持15秒时长生成',
+  },
+  {
+    name: 'Wan 2.5',
+    code: 'wan2.5-i2v-preview',
+    description: '万相2.5。图生视频预览版。',
+  },
 ];
 
-const MODEL_CAPABILITY: Record<VideoModel, { supportsAudio: boolean; credits: number }> = {
-  'Wan 2.6': { supportsAudio: true, credits: 20 },
-  'Wan 2.5': { supportsAudio: false, credits: 15 },
+const MODEL_CAPABILITY: Record<string, { supportsAudio: boolean; credits: number }> = {
+  'wan2.6-i2v': { supportsAudio: true, credits: 20 },
+  'wan2.6-i2v-flash': { supportsAudio: true, credits: 20 },
+  'wan2.5-i2v-preview': { supportsAudio: true, credits: 15 },
 };
-
-const DEFAULT_TASKS: VideoTask[] = [
-  {
-    id: 'video-task-001',
-    status: 'completed',
-    prompt: '定场镜头，二次元风格，女生对镜头轻声说话，然后微笑。',
-    model: 'Wan 2.5',
-    resolution: '720P',
-    duration: 5,
-    startFrameName: 'cover_start.png',
-    endFrameName: 'cover_end.png',
-    createdAt: Date.now() - 1000 * 60 * 18,
-    videoUrl: DEMO_VIDEO_URLS[0],
-  },
-  {
-    id: 'video-task-002',
-    status: 'processing',
-    prompt: '室内近景，角色从左向右转头，发丝轻微摆动，电影感光影。',
-    model: 'Wan 2.6',
-    resolution: '1080P',
-    duration: 10,
-    startFrameName: 'portrait_begin.jpg',
-    createdAt: Date.now() - 1000 * 60 * 7,
-  },
-];
 
 const taskTimeFormatter = new Intl.DateTimeFormat('zh-CN', {
   month: '2-digit',
@@ -63,9 +62,13 @@ const taskTimeFormatter = new Intl.DateTimeFormat('zh-CN', {
 });
 
 const VideoStudio: React.FC = () => {
-  const [tasks, setTasks] = useState<VideoTask[]>(DEFAULT_TASKS);
+  const [tasks, setTasks] = useState<VideoTask[]>([]);
+  const [videoModels, setVideoModels] = useState<VideoModelOption[]>(DEFAULT_VIDEO_MODELS);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [prompt, setPrompt] = useState('');
-  const [model, setModel] = useState<VideoModel>('Wan 2.6');
+  const [modelCode, setModelCode] = useState<string>(DEFAULT_VIDEO_MODELS[0].code);
   const [resolution, setResolution] = useState<VideoResolution>('720P');
   const [duration, setDuration] = useState<VideoDuration>(5);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -75,12 +78,15 @@ const VideoStudio: React.FC = () => {
   const [startFrameFile, setStartFrameFile] = useState<File | null>(null);
   const [endFrameFile, setEndFrameFile] = useState<File | null>(null);
   const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
+  const [audioTrim, setAudioTrim] = useState({ start: 0, end: 0, duration: 0 });
+  const [startFramePreviewUrl, setStartFramePreviewUrl] = useState<string | null>(null);
+  const [endFramePreviewUrl, setEndFramePreviewUrl] = useState<string | null>(null);
 
   const startFrameInputRef = useRef<HTMLInputElement>(null);
   const endFrameInputRef = useRef<HTMLInputElement>(null);
   const audioInputRef = useRef<HTMLInputElement>(null);
   const settingsRef = useRef<HTMLDivElement>(null);
-  const simulationTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -95,75 +101,252 @@ const VideoStudio: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    return () => {
-      if (simulationTimerRef.current) {
-        window.clearTimeout(simulationTimerRef.current);
+    let isMounted = true;
+
+    const loadVideoModels = async () => {
+      try {
+        const models = await getVideoModels();
+        if (!isMounted || models.length === 0) {
+          return;
+        }
+
+        setVideoModels(models);
+        setModelCode((prev) => (models.some((item) => item.code === prev) ? prev : models[0].code));
+      } catch {
+        // Keep fallback models when API is unavailable.
       }
+    };
+
+    void loadVideoModels();
+
+    return () => {
+      isMounted = false;
     };
   }, []);
 
-  useEffect(() => {
-    if (!MODEL_CAPABILITY[model].supportsAudio && audioFile) {
-      setAudioFile(null);
+  const selectedModel = useMemo(
+    () => videoModels.find((item) => item.code === modelCode) || videoModels[0] || DEFAULT_VIDEO_MODELS[0],
+    [videoModels, modelCode]
+  );
+
+  const modelNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    DEFAULT_VIDEO_MODELS.forEach((item) => map.set(item.code, item.name));
+    videoModels.forEach((item) => map.set(item.code, item.name));
+    return map;
+  }, [videoModels]);
+
+  const getModelName = useCallback((code: string): string => {
+    return modelNameMap.get(code) || code;
+  }, [modelNameMap]);
+
+  const currentModelCapability = useMemo(
+    () => MODEL_CAPABILITY[selectedModel.code] || { supportsAudio: true, credits: 20 },
+    [selectedModel.code]
+  );
+
+  const extractFilename = (value?: string): string | undefined => {
+    if (!value) {
+      return undefined;
     }
-  }, [model, audioFile]);
+    try {
+      const pathname = new URL(value).pathname;
+      const filename = pathname.split('/').pop();
+      return filename || value;
+    } catch {
+      const filename = value.split('/').pop();
+      return filename || value;
+    }
+  };
 
-  const currentCredits = useMemo(() => MODEL_CAPABILITY[model].credits, [model]);
-  const supportsAudio = useMemo(() => MODEL_CAPABILITY[model].supportsAudio, [model]);
+  const getMetaString = (meta: Record<string, unknown> | undefined, key: string): string | undefined => {
+    if (!meta) {
+      return undefined;
+    }
+    const value = meta[key];
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+  };
 
-  const handleCreateTask = () => {
+  const mapBackendTask = useCallback(async (item: VideoTaskItemResponse): Promise<VideoTask> => {
+    let videoUrl: string | undefined;
+    if (item.status === 'completed' && item.result_video_file_id) {
+      try {
+        const file = await getFileUrl(item.result_video_file_id, 3600);
+        videoUrl = file.url;
+      } catch {
+        // Keep empty URL if signed URL fetch fails.
+      }
+    }
+
+    const normalizedStatus: VideoTaskStatus = item.status === 'failed'
+      ? 'failed'
+      : item.status === 'completed'
+        ? 'completed'
+        : 'processing';
+
+    const normalizedResolution = (item.resolution || '720P') as VideoResolution;
+    const normalizedDuration = typeof item.duration === 'number' ? item.duration : 5;
+
+    return {
+      id: item.id,
+      status: normalizedStatus,
+      prompt: item.prompt,
+      modelCode: item.model,
+      resolution: normalizedResolution,
+      duration: normalizedDuration,
+      startFrameName: getMetaString(item.meta, 'image_filename') || item.image_file_id || extractFilename(item.image_url),
+      endFrameName: getMetaString(item.meta, 'end_frame_filename') || item.end_frame_file_id || undefined,
+      audioName: getMetaString(item.meta, 'audio_filename') || item.audio_file_id || extractFilename(item.audio_url),
+      videoUrl,
+      createdAt: new Date(item.created_at).getTime(),
+      errorMessage: item.error_message || item.provider_message,
+    };
+  }, []);
+
+  const loadVideoTasks = useCallback(async () => {
+    try {
+      setTaskError(null);
+      const response = await getVideoTasks({ page: 1, page_size: 30 });
+      const mapped = await Promise.all(response.tasks.map((item) => mapBackendTask(item)));
+      setTasks(mapped);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '加载视频任务失败';
+      setTaskError(message);
+      setTasks([]);
+    } finally {
+      setIsLoadingTasks(false);
+    }
+  }, [mapBackendTask]);
+
+  useEffect(() => {
+    void loadVideoTasks();
+  }, [loadVideoTasks]);
+
+  useEffect(() => {
+    if (!tasks.some((task) => task.status === 'processing')) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      void loadVideoTasks();
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [tasks, loadVideoTasks]);
+
+  useEffect(() => {
+    if (!currentModelCapability.supportsAudio && audioFile) {
+      setAudioFile(null);
+      setAudioTrim({ start: 0, end: 0, duration: 0 });
+    }
+  }, [currentModelCapability.supportsAudio, audioFile]);
+
+  useEffect(() => {
+    if (!startFrameFile) {
+      setStartFramePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(startFrameFile);
+    setStartFramePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [startFrameFile]);
+
+  useEffect(() => {
+    if (!endFrameFile) {
+      setEndFramePreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(endFrameFile);
+    setEndFramePreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [endFrameFile]);
+
+  useEffect(() => {
+    if (!audioFile) {
+      setAudioPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(audioFile);
+    setAudioPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [audioFile]);
+
+  const currentCredits = useMemo(() => currentModelCapability.credits, [currentModelCapability.credits]);
+  const supportsAudio = useMemo(() => currentModelCapability.supportsAudio, [currentModelCapability.supportsAudio]);
+
+  const handleCreateTask = async () => {
     const normalizedPrompt = prompt.trim();
     if (!normalizedPrompt || isGenerating) {
       return;
     }
+    if (!startFrameFile) {
+      setSubmitError('请先上传首帧图片');
+      return;
+    }
 
+    setSubmitError(null);
     setIsGenerating(true);
     setIsSettingsOpen(false);
     setIsModelMenuOpen(false);
 
-    const taskId = `video-task-${Date.now()}`;
-    const pendingTask: VideoTask = {
-      id: taskId,
-      status: 'processing',
-      prompt: normalizedPrompt,
-      model,
-      resolution,
-      duration,
-      startFrameName: startFrameFile?.name,
-      endFrameName: endFrameFile?.name,
-      audioName: audioFile?.name,
-      createdAt: Date.now(),
-    };
+    try {
+      const imageUpload = await uploadMediaFile(startFrameFile);
+      const endFrameUpload = endFrameFile ? await uploadMediaFile(endFrameFile) : null;
+      let audioFileForUpload = audioFile;
+      if (supportsAudio && audioFileForUpload) {
+        const shouldTrimAudio = audioTrim.duration > 0
+          && (audioTrim.start > 0.01 || audioTrim.end < audioTrim.duration - 0.01);
+        if (shouldTrimAudio) {
+          audioFileForUpload = await trimAudioFile(audioFileForUpload, audioTrim.start, audioTrim.end);
+        }
+      }
+      const audioUpload = supportsAudio && audioFileForUpload ? await uploadMediaFile(audioFileForUpload) : null;
 
-    setTasks((prev) => [pendingTask, ...prev]);
-    setPrompt('');
+      await createVideoTask({
+        model: selectedModel.code,
+        prompt: normalizedPrompt,
+        image_file_id: imageUpload.id,
+        end_frame_file_id: endFrameUpload?.id,
+        audio_file_id: audioUpload?.id,
+        resolution,
+        duration,
+        prompt_extend: true,
+        audio: supportsAudio ? (audioUpload ? undefined : true) : undefined,
+      });
 
-    simulationTimerRef.current = window.setTimeout(() => {
-      setTasks((prev) =>
-        prev.map((task) => {
-          if (task.id !== taskId) {
-            return task;
-          }
-
-          const nextUrl = DEMO_VIDEO_URLS[Math.floor(Math.random() * DEMO_VIDEO_URLS.length)];
-          return {
-            ...task,
-            status: 'completed',
-            videoUrl: nextUrl,
-          };
-        })
-      );
+      setPrompt('');
+      setStartFrameFile(null);
+      setEndFrameFile(null);
+      setAudioFile(null);
+      setAudioTrim({ start: 0, end: 0, duration: 0 });
+      await loadVideoTasks();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '提交视频任务失败';
+      setSubmitError(message);
+    } finally {
       setIsGenerating(false);
-    }, 2500);
+    }
   };
 
   const handleReuseTaskConfig = (task: VideoTask) => {
     setPrompt(task.prompt);
-    setModel(task.model);
+    setModelCode(task.modelCode);
     setResolution(task.resolution);
     setDuration(task.duration);
     setIsSettingsOpen(false);
     setIsModelMenuOpen(false);
+  };
+
+  const handleSwapFrames = () => {
+    setStartFrameFile(endFrameFile);
+    setEndFrameFile(startFrameFile);
+  };
+
+  const handleResetAudio = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setAudioFile(null);
+    setAudioTrim({ start: 0, end: 0, duration: 0 });
+    if (audioInputRef.current) {
+      audioInputRef.current.value = '';
+    }
   };
 
   const renderTaskStatus = (status: VideoTaskStatus) => {
@@ -182,17 +365,47 @@ const VideoStudio: React.FC = () => {
     file: File | null,
     onClick: () => void,
     disabled?: boolean,
-    helperText?: string
+    helperText?: string,
+    previewUrl?: string | null,
+    asImageTile?: boolean
   ) => (
     <div className="space-y-1.5">
       <button
         type="button"
         onClick={onClick}
         disabled={disabled}
-        className="video-upload-chip focus-ring"
+        className={asImageTile ? 'video-image-upload-tile focus-ring' : `video-upload-chip focus-ring ${previewUrl ? 'has-preview' : ''}`}
       >
-        <i className={`fas ${iconClass}`}></i>
-        <span>{label}</span>
+        {asImageTile ? (
+          previewUrl ? (
+            <>
+              <img src={previewUrl} alt={`${label}预览`} className="video-image-upload-tile-image" />
+              <span className="video-image-upload-tile-badge">{label}</span>
+              <span className="video-upload-hover-preview">
+                <img src={previewUrl} alt={`${label}大图预览`} className="video-upload-hover-image" />
+              </span>
+            </>
+          ) : (
+            <>
+              <i className={`fas ${iconClass}`}></i>
+              <span>{label}</span>
+            </>
+          )
+        ) : (
+          <>
+            {previewUrl ? (
+              <span className="video-upload-thumb-wrap">
+                <img src={previewUrl} alt={`${label}预览`} className="video-upload-thumb" />
+                <span className="video-upload-hover-preview">
+                  <img src={previewUrl} alt={`${label}大图预览`} className="video-upload-hover-image" />
+                </span>
+              </span>
+            ) : (
+              <i className={`fas ${iconClass}`}></i>
+            )}
+            <span>{label}</span>
+          </>
+        )}
       </button>
       <p className="video-upload-name">{file ? file.name : helperText || '未选择文件'}</p>
     </div>
@@ -213,7 +426,29 @@ const VideoStudio: React.FC = () => {
         </div>
 
         <div className="space-y-4 max-h-[56vh] overflow-y-auto custom-scrollbar pr-1">
-          {tasks.map((task) => (
+          {isLoadingTasks ? (
+            <div className="panel-subtle rounded-2xl p-6 text-center text-[13px] text-[var(--text-secondary)]">
+              <i className="fas fa-spinner fa-spin mr-2"></i>
+              正在加载视频任务...
+            </div>
+          ) : null}
+
+          {!isLoadingTasks && taskError ? (
+            <div className="panel-subtle rounded-2xl p-6 text-center text-[13px] text-[var(--text-secondary)]">
+              <p className="mb-3">{taskError}</p>
+              <button type="button" onClick={() => void loadVideoTasks()} className="ghost-button focus-ring h-9 px-4 text-xs font-semibold">
+                重新加载
+              </button>
+            </div>
+          ) : null}
+
+          {!isLoadingTasks && !taskError && tasks.length === 0 ? (
+            <div className="panel-subtle rounded-2xl p-6 text-center text-[13px] text-[var(--text-secondary)]">
+              暂无视频任务
+            </div>
+          ) : null}
+
+          {!isLoadingTasks && !taskError ? tasks.map((task) => (
             <article key={task.id} className="glass-panel-strong rounded-2xl p-4 md:p-5 video-task-item">
               <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4 xl:gap-5">
                 <div className="space-y-3">
@@ -252,7 +487,7 @@ const VideoStudio: React.FC = () => {
                   <div className="space-y-2 text-[12px] text-[var(--text-secondary)]">
                     <div className="flex justify-between gap-2">
                       <span>模型</span>
-                      <span className="font-semibold text-[var(--text-primary)]">{task.model}</span>
+                      <span className="font-semibold text-[var(--text-primary)]">{getModelName(task.modelCode)}</span>
                     </div>
                     <div className="flex justify-between gap-2">
                       <span>分辨率 / 时长</span>
@@ -274,7 +509,7 @@ const VideoStudio: React.FC = () => {
                 </div>
               </div>
             </article>
-          ))}
+          )) : null}
         </div>
       </section>
 
@@ -293,28 +528,26 @@ const VideoStudio: React.FC = () => {
                 aria-haspopup="listbox"
               >
                 <i className="fas fa-globe"></i>
-                {model}
+                {selectedModel.name}
                 <i className={`fas ${isModelMenuOpen ? 'fa-chevron-up' : 'fa-chevron-down'} text-[10px]`}></i>
               </button>
 
               {isModelMenuOpen && (
                 <div className="video-model-popover" role="listbox" aria-label="视频模型">
-                  {(['Wan 2.6', 'Wan 2.5'] as VideoModel[]).map((option) => (
+                  {videoModels.map((option) => (
                     <button
-                      key={option}
+                      key={option.code}
                       type="button"
                       onClick={() => {
-                        setModel(option);
+                        setModelCode(option.code);
                         setIsModelMenuOpen(false);
                       }}
-                      className={`video-model-option focus-ring ${model === option ? 'active' : ''}`}
+                      className={`video-model-option focus-ring ${modelCode === option.code ? 'active' : ''}`}
                       role="option"
-                      aria-selected={model === option}
+                      aria-selected={modelCode === option.code}
                     >
-                      <span>{option}</span>
-                      <span className="text-[10px] text-[var(--text-muted)]">
-                        {MODEL_CAPABILITY[option].supportsAudio ? '支持音频' : '无音频'}
-                      </span>
+                      <span className="video-model-option-title">{option.name}</span>
+                      <span className="video-model-option-subtitle">{option.description}</span>
                     </button>
                   ))}
                 </div>
@@ -343,7 +576,7 @@ const VideoStudio: React.FC = () => {
                   <p className="text-lg text-[var(--text-primary)] mb-4">Setting</p>
 
                   <div className="segment-control mb-4">
-                    {(['1080P', '720P'] as VideoResolution[]).map((option) => (
+                    {(['1080P', '720P', '480P'] as VideoResolution[]).map((option) => (
                       <button
                         key={option}
                         type="button"
@@ -404,32 +637,95 @@ const VideoStudio: React.FC = () => {
           />
 
           <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {renderFileButton('首帧', 'fa-image', startFrameFile, () => startFrameInputRef.current?.click(), false, '可选：静态起始画面')}
-              {renderFileButton('尾帧', 'fa-images', endFrameFile, () => endFrameInputRef.current?.click(), false, '可选：静态结束画面')}
+            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-center">
+              {renderFileButton('首帧', 'fa-image', startFrameFile, () => startFrameInputRef.current?.click(), false, '必填：静态起始画面', startFramePreviewUrl, true)}
+              <button
+                type="button"
+                onClick={handleSwapFrames}
+                className="video-swap-button focus-ring"
+                title="互换首尾帧"
+                aria-label="互换首尾帧"
+              >
+                <i className="fas fa-right-left"></i>
+              </button>
+              {renderFileButton('尾帧', 'fa-images', endFrameFile, () => endFrameInputRef.current?.click(), false, '可选：静态结束画面', endFramePreviewUrl, true)}
             </div>
-            <div>
-              {renderFileButton(
-                '音频',
-                'fa-music',
-                audioFile,
-                () => audioInputRef.current?.click(),
-                !supportsAudio,
-                supportsAudio ? '可选：对口型或节奏参考' : '当前模型不支持音频'
-              )}
+
+            <div className="space-y-2">
+              <label className="muted-label">音频</label>
+              <div
+                onClick={() => {
+                  if (!audioFile && supportsAudio) {
+                    audioInputRef.current?.click();
+                  }
+                }}
+                className={`upload-zone p-4 flex flex-col items-center justify-center text-center gap-2 ${
+                  audioFile ? 'is-filled' : ''
+                } ${!supportsAudio ? 'disabled' : ''}`}
+              >
+                {!audioFile ? (
+                  <>
+                    <div className="w-10 h-10 rounded-xl panel-subtle flex items-center justify-center text-[var(--accent-ink)]">
+                      <i className="fas fa-music"></i>
+                    </div>
+                    <p className="text-xs text-[var(--text-secondary)]">
+                      {supportsAudio ? '可选：上传音频并裁剪后用于视频生成' : '当前模型不支持音频'}
+                    </p>
+                  </>
+                ) : (
+                  <div className="w-full space-y-3 text-left">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <span className="pill success">
+                        <i className="fas fa-check"></i>
+                        音频参考已就绪
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleResetAudio}
+                        className="ghost-button focus-ring h-8 px-3 text-xs font-semibold"
+                      >
+                        更换音频
+                      </button>
+                    </div>
+
+                    {audioFile && audioPreviewUrl ? (
+                      <AudioWaveformEditor
+                        key={`${audioFile.name}-${audioFile.lastModified}`}
+                        file={audioFile}
+                        audioUrl={audioPreviewUrl}
+                        disabled={isGenerating}
+                        accent="voice"
+                        onTrimChange={(start, end, totalDuration) => {
+                          setAudioTrim({ start, end, duration: totalDuration });
+                        }}
+                      />
+                    ) : null}
+                  </div>
+                )}
+              </div>
+              <p className="video-upload-name">
+                {audioFile
+                  ? audioFile.name
+                  : supportsAudio
+                    ? '可选：对口型或节奏参考'
+                    : '当前模型不支持音频'}
+              </p>
             </div>
           </div>
 
           <div className="mt-4">
             <button
               type="button"
-              onClick={handleCreateTask}
-              disabled={!prompt.trim() || isGenerating}
+              onClick={() => void handleCreateTask()}
+              disabled={!prompt.trim() || !startFrameFile || isGenerating}
               className="video-submit-button focus-ring w-full"
             >
               <i className={`fas ${isGenerating ? 'fa-spinner fa-spin' : 'fa-wand-magic'}`}></i>
               <span>{isGenerating ? '生成中...' : '提交视频任务'}</span>
             </button>
+            {submitError ? (
+              <p className="text-center text-[11px] text-[#b1625b] mt-2">{submitError}</p>
+            ) : null}
             <p className="text-center text-[11px] text-[var(--text-muted)] mt-2">
               <i className="fas fa-coins text-[var(--accent-gold)] mr-1"></i>
               每次任务消耗 {currentCredits} 积分

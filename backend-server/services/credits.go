@@ -25,6 +25,11 @@ func IsPhoneWhitelisted(phone string) bool {
 // Returns error if insufficient credits
 // Skips deduction for whitelisted users
 func DeductCredits(userID, taskID string) error {
+	return DeductCreditsWithRemark(userID, taskID, "TTS task consumption")
+}
+
+// DeductCreditsWithRemark deducts credits and records custom remark in credit log.
+func DeductCreditsWithRemark(userID, taskID, remark string) error {
 	// Get user
 	var user models.User
 	if err := models.DB.First(&user, "id = ?", userID).Error; err != nil {
@@ -71,7 +76,7 @@ func DeductCredits(userID, taskID string) error {
 			Balance: updatedUser.Credits,
 			Type:    "consume",
 			RefID:   taskID,
-			Remark:  "TTS task consumption",
+			Remark:  remark,
 		}
 		return tx.Create(&creditLog).Error
 	})

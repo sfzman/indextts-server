@@ -36,12 +36,16 @@ type Config struct {
 	JWTPrivateKey    string
 	JWTExpireSeconds int
 
+	// Mobi video generation service
+	MobiAPIBaseURL string
+	MobiAPIKey     string
+
 	// SMS (Aliyun)
-	SMSAccessKeyID      string
-	SMSAccessKeySecret  string
-	SMSSignName         string
-	SMSTemplateCode     string
-	SMSCodeExpireMinutes int
+	SMSAccessKeyID         string
+	SMSAccessKeySecret     string
+	SMSSignName            string
+	SMSTemplateCode        string
+	SMSCodeExpireMinutes   int
 	SMSCodeCooldownSeconds int
 
 	// User Auth
@@ -49,18 +53,18 @@ type Config struct {
 	AuthJWTExpireHours int
 
 	// Credits
-	CreditsInitial    int      // Initial credits for new users
-	CreditsPerTask    int      // Credits deducted per task
-	CreditsPerYuan    int      // Credits per 1 yuan
-	PhoneWhitelist    []string // Phone numbers that don't consume credits
+	CreditsInitial int      // Initial credits for new users
+	CreditsPerTask int      // Credits deducted per task
+	CreditsPerYuan int      // Credits per 1 yuan
+	PhoneWhitelist []string // Phone numbers that don't consume credits
 
 	// Alipay
-	AlipayAppID        string
-	AlipayPrivateKey   string
-	AlipayPublicKey    string // Alipay public key for signature verification
-	AlipayNotifyURL    string // Callback URL for payment notification
-	AlipayReturnURL    string // Return URL after payment
-	AlipaySandbox      bool   // Use sandbox environment
+	AlipayAppID      string
+	AlipayPrivateKey string
+	AlipayPublicKey  string // Alipay public key for signature verification
+	AlipayNotifyURL  string // Callback URL for payment notification
+	AlipayReturnURL  string // Return URL after payment
+	AlipaySandbox    bool   // Use sandbox environment
 }
 
 var Cfg *Config
@@ -86,6 +90,8 @@ func Load() error {
 		InferenceURL:       getEnv("INFERENCE_URL", "http://localhost:8000"),
 		JWTPrivateKey:      strings.ReplaceAll(getEnv("JWT_PRIVATE_KEY", ""), `\n`, "\n"),
 		JWTExpireSeconds:   getEnvInt("JWT_EXPIRE_SECONDS", 60),
+		MobiAPIBaseURL:     getEnv("MOBI_API_BASE_URL", "https://api.mobimodel.cn"),
+		MobiAPIKey:         getEnv("MOBI_API_KEY", ""),
 
 		// SMS configuration
 		SMSAccessKeyID:         getEnv("SMS_ACCESS_KEY_ID", ""),

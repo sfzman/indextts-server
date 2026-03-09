@@ -32,6 +32,33 @@ export async function uploadAudioFile(file: File): Promise<UploadResponse> {
   return data as UploadResponse;
 }
 
+// 上传通用媒体文件（视频工坊：图片/音频）
+export async function uploadMediaFile(file: File): Promise<UploadResponse> {
+  const token = getToken();
+  if (!token) {
+    throw new Error('未登录');
+  }
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await fetch(`${API_BASE_URL}/upload/media`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    body: formData,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    throw new Error(data.error || '上传失败');
+  }
+
+  return data as UploadResponse;
+}
+
 // 从 Base64 创建 File 对象并上传
 export async function uploadAudioFromBase64(
   base64Data: string,

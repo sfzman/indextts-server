@@ -156,7 +156,7 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <div className="relative mx-auto max-w-[1560px] px-4 sm:px-6 lg:px-8 pt-24 pb-8">
+      <div className="relative mx-auto max-w-[2400px] px-3 sm:px-4 lg:px-5 pt-24 pb-8">
         {user ? (
           <div className="relative lg:pl-[66px]">
             <aside className="hidden lg:flex app-edge-sidebar">

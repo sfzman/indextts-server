@@ -455,7 +455,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   return (
     <>
       {toast && (
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[110]">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[140]">
           <div className={`toast ${toast.type === 'success' ? 'success' : 'error'}`}>
             <i className={`fas ${toast.type === 'success' ? 'fa-circle-check' : 'fa-triangle-exclamation'} mr-2`}></i>
             <span className="text-sm font-semibold">{toast.message}</span>

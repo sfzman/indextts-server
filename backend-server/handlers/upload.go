@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"mime/multipart"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -16,17 +17,38 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// allowedAudioExtensions defines allowed audio file extensions
-var allowedAudioExtensions = map[string]bool{
-	".wav":  true,
-	".mp3":  true,
-	".flac": true,
-	".ogg":  true,
-	".m4a":  true,
+var allowedAudioContentTypes = map[string]string{
+	".wav":  "audio/wav",
+	".mp3":  "audio/mpeg",
+	".flac": "audio/flac",
+	".ogg":  "audio/ogg",
+	".m4a":  "audio/mp4",
+}
+
+var allowedMediaContentTypes = map[string]string{
+	".wav":  "audio/wav",
+	".mp3":  "audio/mpeg",
+	".flac": "audio/flac",
+	".ogg":  "audio/ogg",
+	".m4a":  "audio/mp4",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".png":  "image/png",
+	".webp": "image/webp",
+	".bmp":  "image/bmp",
 }
 
 // UploadAudio handles audio file upload
 func UploadAudio(c *gin.Context) {
+	uploadByContentTypes(c, allowedAudioContentTypes, "Invalid file type. Allowed: wav, mp3, flac, ogg, m4a")
+}
+
+// UploadMedia handles media upload for video workflows (audio + images).
+func UploadMedia(c *gin.Context) {
+	uploadByContentTypes(c, allowedMediaContentTypes, "Invalid file type. Allowed: wav, mp3, flac, ogg, m4a, jpg, jpeg, png, webp, bmp")
+}
+
+func uploadByContentTypes(c *gin.Context, allowed map[string]string, invalidTypeMessage string) {
 	userID := middleware.GetUserID(c)
 	if userID == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{
@@ -43,16 +65,15 @@ func UploadAudio(c *gin.Context) {
 		return
 	}
 
-	// Check file extension
 	ext := strings.ToLower(filepath.Ext(file.Filename))
-	if !allowedAudioExtensions[ext] {
+	contentType, ok := allowed[ext]
+	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "Invalid file type. Allowed: wav, mp3, flac, ogg, m4a",
+			"error": invalidTypeMessage,
 		})
 		return
 	}
 
-	// Check file size (max 50MB)
 	if file.Size > 50*1024*1024 {
 		c.JSON(http.StatusBadRequest, gin.H{
 			"error": "File too large. Maximum size is 50MB",
@@ -60,7 +81,6 @@ func UploadAudio(c *gin.Context) {
 		return
 	}
 
-	// Open file
 	src, err := file.Open()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -70,20 +90,6 @@ func UploadAudio(c *gin.Context) {
 	}
 	defer src.Close()
 
-	// Determine content type
-	contentType := "audio/wav"
-	switch ext {
-	case ".mp3":
-		contentType = "audio/mpeg"
-	case ".flac":
-		contentType = "audio/flac"
-	case ".ogg":
-		contentType = "audio/ogg"
-	case ".m4a":
-		contentType = "audio/mp4"
-	}
-
-	// Upload to OSS
 	ossKey, err := services.UploadFile(src, file.Filename, contentType)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -92,7 +98,10 @@ func UploadAudio(c *gin.Context) {
 		return
 	}
 
-	// Create file record in database
+	persistUploadedFile(c, userID, file, contentType, ossKey)
+}
+
+func persistUploadedFile(c *gin.Context, userID string, file *multipart.FileHeader, contentType, ossKey string) {
 	fileRecord := models.File{
 		ID:          uuid.New().String(),
 		UserID:      userID,
@@ -114,7 +123,6 @@ func UploadAudio(c *gin.Context) {
 		var existing models.File
 		err := models.DB.Unscoped().First(&existing, "user_id = ? AND oss_key = ?", userID, ossKey).Error
 		if err == nil {
-			// Restore soft-deleted file metadata record for the same user.
 			if existing.DeletedAt.Valid {
 				if err := models.DB.Unscoped().
 					Model(&models.File{}).

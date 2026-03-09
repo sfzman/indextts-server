@@ -92,6 +92,7 @@ func main() {
 
 			// Upload
 			protected.POST("/upload", handlers.UploadAudio)
+			protected.POST("/upload/media", handlers.UploadMedia)
 
 			// Files
 			protected.GET("/files/:id", handlers.GetFile)
@@ -103,6 +104,13 @@ func main() {
 			protected.GET("/tasks/:id", handlers.GetTask)
 			protected.DELETE("/tasks/:id", handlers.DeleteTask)
 			protected.DELETE("/tasks", handlers.ClearTasks)
+
+			// Video
+			protected.GET("/video/models", handlers.ListVideoModels)
+			protected.POST("/video/tasks", handlers.CreateVideoTask)
+			protected.GET("/video/tasks", handlers.ListVideoTasks)
+			protected.GET("/video/tasks/:id", handlers.GetVideoTask)
+			protected.DELETE("/video/tasks/:id", handlers.DeleteVideoTask)
 
 			// Favorites
 			protected.GET("/favorites", handlers.ListFavorites)

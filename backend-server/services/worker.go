@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"time"
 
 	"backend-server/models"
@@ -50,6 +52,7 @@ func (w *Worker) run() {
 			return
 		case <-ticker.C:
 			w.processNextTask()
+			w.processNextVideoTask()
 		}
 	}
 }
@@ -186,4 +189,209 @@ func (w *Worker) processNextTask() {
 	})
 
 	log.Printf("Task %s completed successfully, result file: %s", task.ID, resultFile.ID)
+}
+
+func (w *Worker) processNextVideoTask() {
+	var task models.VideoTask
+	result := models.DB.
+		Where("status IN ? AND provider_task_id <> ''", []models.TaskStatus{models.TaskStatusPending, models.TaskStatusProcessing}).
+		Order("created_at ASC").
+		First(&task)
+	if result.Error != nil {
+		return
+	}
+
+	log.Printf("Polling video task %s (provider task=%s)", task.ID, task.ProviderTaskID)
+	meta := task.GetMetaMap()
+
+	providerResp, err := QueryMobiVideoTask(task.ProviderTaskID)
+	if err != nil {
+		log.Printf("Video task %s polling failed: %v", task.ID, err)
+		meta["provider_message"] = err.Error()
+		updateTaskMetaOnly(&task, meta)
+		return
+	}
+
+	nextStatus := MapMobiTaskStatus(providerResp.Output.TaskStatus)
+	meta["provider_status"] = providerResp.Output.TaskStatus
+	meta["provider_message"] = providerResp.Output.Message
+	if providerResp.RequestID != "" {
+		meta["provider_request_id"] = providerResp.RequestID
+	}
+	if providerResp.Output.VideoURL != "" {
+		meta["provider_video_url"] = providerResp.Output.VideoURL
+	}
+	if providerResp.Output.SubmitTime != "" {
+		meta["provider_submit_time"] = providerResp.Output.SubmitTime
+	}
+	if providerResp.Output.ScheduleTime != "" {
+		meta["provider_scheduled_time"] = providerResp.Output.ScheduleTime
+	}
+	if providerResp.Output.EndTime != "" {
+		meta["provider_end_time"] = providerResp.Output.EndTime
+	}
+	if providerResp.Output.OrigPrompt != "" {
+		meta["provider_orig_prompt"] = providerResp.Output.OrigPrompt
+	}
+	if providerResp.Output.ActualPrompt != "" {
+		meta["provider_actual_prompt"] = providerResp.Output.ActualPrompt
+	}
+	if len(providerResp.Usage) > 0 {
+		meta["provider_usage"] = providerResp.Usage
+	}
+
+	metaJSON, marshalErr := marshalTaskMeta(meta)
+	if marshalErr != nil {
+		log.Printf("Video task %s failed to serialize metadata: %v", task.ID, marshalErr)
+		models.DB.Model(&task).Updates(map[string]interface{}{
+			"status":        models.TaskStatusFailed,
+			"error_message": "Failed to serialize video metadata",
+		})
+		return
+	}
+
+	updates := map[string]interface{}{
+		"status": nextStatus,
+		"meta":   metaJSON,
+	}
+
+	if nextStatus == models.TaskStatusFailed {
+		updates["error_message"] = firstNonEmptyString(providerResp.Output.Message, "Video generation failed")
+		models.DB.Model(&task).Updates(updates)
+		return
+	}
+
+	if nextStatus != models.TaskStatusCompleted {
+		models.DB.Model(&task).Updates(updates)
+		return
+	}
+
+	if providerResp.Output.VideoURL == "" {
+		updates["status"] = models.TaskStatusFailed
+		updates["error_message"] = "Provider returned SUCCEEDED but no video_url"
+		models.DB.Model(&task).Updates(updates)
+		return
+	}
+
+	videoData, contentType, err := downloadRemoteFile(providerResp.Output.VideoURL)
+	if err != nil {
+		log.Printf("Video task %s failed to download provider result: %v", task.ID, err)
+		updates["status"] = models.TaskStatusFailed
+		updates["error_message"] = "Failed to download generated video: " + err.Error()
+		models.DB.Model(&task).Updates(updates)
+		return
+	}
+
+	if contentType == "" {
+		contentType = "video/mp4"
+	}
+
+	resultOSSKey, err := UploadBytes(videoData, fmt.Sprintf("video_%s.mp4", task.ID), contentType)
+	if err != nil {
+		log.Printf("Video task %s failed to upload result: %v", task.ID, err)
+		updates["status"] = models.TaskStatusFailed
+		updates["error_message"] = "Failed to upload generated video: " + err.Error()
+		models.DB.Model(&task).Updates(updates)
+		return
+	}
+
+	resultFile := models.File{
+		ID:          uuid.New().String(),
+		UserID:      task.UserID,
+		Filename:    fmt.Sprintf("video_%s.mp4", task.ID),
+		OSSKey:      resultOSSKey,
+		ContentType: contentType,
+		Size:        int64(len(videoData)),
+	}
+	if err := models.DB.Create(&resultFile).Error; err != nil {
+		log.Printf("Video task %s failed to create file record: %v", task.ID, err)
+		updates["status"] = models.TaskStatusFailed
+		updates["error_message"] = "Failed to create result file record: " + err.Error()
+		models.DB.Model(&task).Updates(updates)
+		return
+	}
+
+	updates["status"] = models.TaskStatusCompleted
+	updates["result_video_file_id"] = resultFile.ID
+	updates["error_message"] = ""
+	updates["meta"] = metaJSON
+	models.DB.Model(&task).Updates(updates)
+
+	log.Printf("Video task %s completed successfully, result file: %s", task.ID, resultFile.ID)
+}
+
+func downloadRemoteFile(url string) ([]byte, string, error) {
+	client := &http.Client{Timeout: 10 * time.Minute}
+	req, err := http.NewRequest(http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "", err
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 2048))
+		return nil, "", fmt.Errorf("status %d: %s", resp.StatusCode, string(body))
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", err
+	}
+
+	return data, resp.Header.Get("Content-Type"), nil
+}
+
+func firstNonEmptyString(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func marshalTaskMeta(meta map[string]interface{}) (string, error) {
+	cleaned := compactTaskMeta(meta)
+	if len(cleaned) == 0 {
+		return "", nil
+	}
+	raw, err := json.Marshal(cleaned)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func updateTaskMetaOnly(task *models.VideoTask, meta map[string]interface{}) {
+	metaJSON, err := marshalTaskMeta(meta)
+	if err != nil {
+		return
+	}
+	models.DB.Model(task).Update("meta", metaJSON)
+}
+
+func compactTaskMeta(input map[string]interface{}) map[string]interface{} {
+	if len(input) == 0 {
+		return map[string]interface{}{}
+	}
+	result := make(map[string]interface{}, len(input))
+	for k, v := range input {
+		if v == nil {
+			continue
+		}
+		if s, ok := v.(string); ok {
+			if s == "" {
+				continue
+			}
+			result[k] = s
+			continue
+		}
+		result[k] = v
+	}
+	return result
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"strings"
 
 	"backend-server/config"
 
@@ -48,7 +49,7 @@ func UploadFile(reader io.Reader, filename string, contentType string) (string, 
 
 	// Use hash as object key for deduplication
 	ext := path.Ext(filename)
-	objectKey := fmt.Sprintf("indextts/audio/%s%s", hashStr, ext)
+	objectKey := fmt.Sprintf("indextts/%s/%s%s", objectPrefixByContentType(contentType), hashStr, ext)
 
 	// Check if file already exists
 	exists, err := ossBucket.IsObjectExist(objectKey)
@@ -91,7 +92,7 @@ func UploadBytes(data []byte, filename string, contentType string) (string, erro
 
 	// Use hash as object key for deduplication
 	ext := path.Ext(filename)
-	objectKey := fmt.Sprintf("indextts/audio/%s%s", hashStr, ext)
+	objectKey := fmt.Sprintf("indextts/%s/%s%s", objectPrefixByContentType(contentType), hashStr, ext)
 
 	// Check if file already exists
 	exists, err := ossBucket.IsObjectExist(objectKey)
@@ -128,4 +129,18 @@ func (r *bytesReader) Read(p []byte) (n int, err error) {
 // GetObject retrieves an object from OSS and returns a reader
 func GetObject(objectKey string) (io.ReadCloser, error) {
 	return ossBucket.GetObject(objectKey)
+}
+
+func objectPrefixByContentType(contentType string) string {
+	lowerType := strings.ToLower(contentType)
+	switch {
+	case strings.HasPrefix(lowerType, "audio/"):
+		return "audio"
+	case strings.HasPrefix(lowerType, "video/"):
+		return "video"
+	case strings.HasPrefix(lowerType, "image/"):
+		return "image"
+	default:
+		return "file"
+	}
 }
