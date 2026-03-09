@@ -515,9 +515,15 @@ audio {
 .video-composer-inline {
   width: 100%;
   margin: 0;
+  position: relative;
+  z-index: 160;
 }
 
 .video-task-player {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
   border-radius: 14px;
   border: 1px solid rgba(124, 111, 103, 0.26);
   background:
@@ -526,6 +532,120 @@ audio {
     rgba(250, 244, 237, 0.58);
   min-height: 220px;
   overflow: hidden;
+}
+
+.video-task-player-status {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--text-muted);
+  padding: 10px;
+}
+
+.video-task-meta-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.video-task-meta-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(123, 110, 101, 0.28);
+  background: rgba(255, 251, 247, 0.66);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.video-task-prompt-block {
+  border-radius: 12px;
+  border: 1px solid rgba(122, 109, 100, 0.24);
+  background: rgba(255, 252, 249, 0.55);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.video-task-prompt-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.video-task-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.video-task-input-grid.single {
+  grid-template-columns: 1fr;
+}
+
+.video-task-media-card {
+  border-radius: 12px;
+  border: 1px solid rgba(122, 109, 100, 0.24);
+  background: rgba(255, 252, 249, 0.55);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.video-task-media-label {
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.video-task-media-preview {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  border: 1px solid rgba(123, 110, 101, 0.24);
+  background: rgba(244, 235, 228, 0.72);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.video-task-media-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.video-task-media-empty {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.video-task-audio-row {
+  border-radius: 12px;
+  border: 1px solid rgba(122, 109, 100, 0.24);
+  background: rgba(255, 252, 249, 0.55);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+}
+
+.video-task-audio-player {
+  width: 100%;
+  min-height: 34px;
 }
 
 .video-floating-bar {
@@ -745,6 +865,26 @@ audio {
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.video-image-upload-tile.has-preview .video-image-upload-tile-image {
+  position: absolute;
+  inset: 0;
+}
+
+/* 确保图片加载前后容器尺寸稳定 */
+.video-image-upload-tile-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  object-position: center;
+  border-radius: inherit;
+  /* 防止图片加载时影响布局 */
+  flex-shrink: 0;
 }
 
 .video-image-upload-tile:hover {
@@ -762,13 +902,6 @@ audio {
   font-size: 20px;
 }
 
-.video-image-upload-tile-image {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  border-radius: inherit;
-}
-
 .video-image-upload-tile-badge {
   position: absolute;
   left: 10px;
@@ -782,6 +915,30 @@ audio {
   font-weight: 700;
   display: inline-flex;
   align-items: center;
+}
+
+.video-upload-tile-wrap {
+  position: relative;
+}
+
+.video-image-upload-wrap {
+  width: min(100%, 184px);
+  margin: 0 auto;
+}
+
+.video-image-upload-outer {
+  max-width: 184px;
+}
+
+.video-frame-upload-grid {
+  align-items: center;
+}
+
+.video-upload-clear-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 180;
 }
 
 .video-swap-button {
@@ -846,7 +1003,7 @@ audio {
   transform: translateY(6px);
   transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
   pointer-events: none;
-  z-index: 125;
+  z-index: 9999;
 }
 
 .video-upload-hover-image {
@@ -919,6 +1076,14 @@ audio {
 
   .video-control-row {
     grid-template-columns: 1fr;
+  }
+
+  .video-task-input-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .video-image-upload-wrap {
+    width: min(100%, 228px);
   }
 
   .video-prompt-input {

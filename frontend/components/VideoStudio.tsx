@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getFileUrl, uploadMediaFile } from '../services/fileService';
+import { getFileBlob, getFileUrl, uploadMediaFile } from '../services/fileService';
 import AudioWaveformEditor from './AudioWaveformEditor';
 import { trimAudioFile } from '../services/audioUtils';
 import {
@@ -24,6 +24,12 @@ interface VideoTask {
   startFrameName?: string;
   endFrameName?: string;
   audioName?: string;
+  startFrameFileID?: string;
+  endFrameFileID?: string;
+  audioFileID?: string;
+  startFrameUrl?: string;
+  endFrameUrl?: string;
+  audioUrl?: string;
   videoUrl?: string;
   createdAt: number;
   errorMessage?: string;
@@ -74,6 +80,7 @@ const VideoStudio: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [reusingTaskID, setReusingTaskID] = useState<string | null>(null);
 
   const [startFrameFile, setStartFrameFile] = useState<File | null>(null);
   const [endFrameFile, setEndFrameFile] = useState<File | null>(null);
@@ -168,15 +175,36 @@ const VideoStudio: React.FC = () => {
   };
 
   const mapBackendTask = useCallback(async (item: VideoTaskItemResponse): Promise<VideoTask> => {
-    let videoUrl: string | undefined;
-    if (item.status === 'completed' && item.result_video_file_id) {
-      try {
-        const file = await getFileUrl(item.result_video_file_id, 3600);
-        videoUrl = file.url;
-      } catch {
-        // Keep empty URL if signed URL fetch fails.
+    const resolveMediaUrl = async (
+      explicitUrl: string | undefined,
+      fileID: string | undefined
+    ): Promise<string | undefined> => {
+      if (explicitUrl && explicitUrl.trim()) {
+        return explicitUrl.trim();
       }
-    }
+      if (!fileID || !fileID.trim()) {
+        return undefined;
+      }
+      try {
+        const file = await getFileUrl(fileID.trim(), 3600);
+        return file.url;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const startFrameFileID = item.image_file_id || getMetaString(item.meta, 'image_file_id');
+    const endFrameFileID = item.end_frame_file_id || getMetaString(item.meta, 'end_frame_file_id');
+    const audioFileID = item.audio_file_id || getMetaString(item.meta, 'audio_file_id');
+
+    const [videoUrl, startFrameUrl, endFrameUrl, audioUrl] = await Promise.all([
+      item.status === 'completed' && item.result_video_file_id
+        ? resolveMediaUrl(undefined, item.result_video_file_id)
+        : Promise.resolve(undefined),
+      resolveMediaUrl(item.image_url || getMetaString(item.meta, 'image_url'), startFrameFileID),
+      resolveMediaUrl(getMetaString(item.meta, 'end_frame_url'), endFrameFileID),
+      resolveMediaUrl(item.audio_url || getMetaString(item.meta, 'audio_url'), audioFileID),
+    ]);
 
     const normalizedStatus: VideoTaskStatus = item.status === 'failed'
       ? 'failed'
@@ -194,9 +222,15 @@ const VideoStudio: React.FC = () => {
       modelCode: item.model,
       resolution: normalizedResolution,
       duration: normalizedDuration,
-      startFrameName: getMetaString(item.meta, 'image_filename') || item.image_file_id || extractFilename(item.image_url),
-      endFrameName: getMetaString(item.meta, 'end_frame_filename') || item.end_frame_file_id || undefined,
-      audioName: getMetaString(item.meta, 'audio_filename') || item.audio_file_id || extractFilename(item.audio_url),
+      startFrameName: getMetaString(item.meta, 'image_filename') || startFrameFileID || extractFilename(item.image_url),
+      endFrameName: getMetaString(item.meta, 'end_frame_filename') || endFrameFileID || undefined,
+      audioName: getMetaString(item.meta, 'audio_filename') || audioFileID || extractFilename(item.audio_url),
+      startFrameFileID,
+      endFrameFileID,
+      audioFileID,
+      startFrameUrl,
+      endFrameUrl,
+      audioUrl,
       videoUrl,
       createdAt: new Date(item.created_at).getTime(),
       errorMessage: item.error_message || item.provider_message,
@@ -326,18 +360,100 @@ const VideoStudio: React.FC = () => {
     }
   };
 
-  const handleReuseTaskConfig = (task: VideoTask) => {
+  const handleReuseTaskConfig = async (task: VideoTask) => {
+    const fileFromTaskSource = async (
+      fileID: string | undefined,
+      url: string | undefined,
+      filename: string | undefined,
+      fallbackPrefix: string
+    ): Promise<File | null> => {
+      if (!fileID && !url) {
+        return null;
+      }
+
+      let blob: Blob;
+      if (fileID) {
+        blob = await getFileBlob(fileID);
+      } else if (url) {
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`获取素材失败: ${response.status}`);
+        }
+        blob = await response.blob();
+      } else {
+        return null;
+      }
+
+      const baseName = filename || extractFilename(url) || `${fallbackPrefix}-${Date.now()}`;
+      const guessedExt = blob.type.includes('/') ? blob.type.split('/')[1] : 'bin';
+      const normalizedName = baseName.includes('.') ? baseName : `${baseName}.${guessedExt}`;
+      return new File([blob], normalizedName, { type: blob.type || undefined });
+    };
+
     setPrompt(task.prompt);
     setModelCode(task.modelCode);
     setResolution(task.resolution);
     setDuration(task.duration);
     setIsSettingsOpen(false);
     setIsModelMenuOpen(false);
+
+    setSubmitError(null);
+    setReusingTaskID(task.id);
+
+    try {
+      const startFrame = await fileFromTaskSource(
+        task.startFrameFileID,
+        task.startFrameUrl,
+        task.startFrameName,
+        'start-frame'
+      );
+      if (!startFrame) {
+        throw new Error('无法复用首帧素材');
+      }
+
+      const [endFrame, audio] = await Promise.all([
+        fileFromTaskSource(task.endFrameFileID, task.endFrameUrl, task.endFrameName, 'end-frame'),
+        fileFromTaskSource(task.audioFileID, task.audioUrl, task.audioName, 'audio'),
+      ]);
+
+      setStartFrameFile(startFrame);
+      setEndFrameFile(endFrame);
+      setAudioFile(audio);
+      setAudioTrim({ start: 0, end: 0, duration: 0 });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '复用任务素材失败';
+      setSubmitError(message);
+    } finally {
+      setReusingTaskID(null);
+    }
   };
 
   const handleSwapFrames = () => {
     setStartFrameFile(endFrameFile);
     setEndFrameFile(startFrameFile);
+  };
+
+  const handleClearStartFrame = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setStartFrameFile(null);
+    if (startFrameInputRef.current) {
+      startFrameInputRef.current.value = '';
+    }
+  };
+
+  const handleClearEndFrame = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    setEndFrameFile(null);
+    if (endFrameInputRef.current) {
+      endFrameInputRef.current.value = '';
+    }
+  };
+
+  const handleReplaceAudio = (event: React.MouseEvent) => {
+    event.stopPropagation();
+    if (supportsAudio) {
+      audioInputRef.current?.click();
+    }
   };
 
   const handleResetAudio = (event: React.MouseEvent) => {
@@ -367,46 +483,66 @@ const VideoStudio: React.FC = () => {
     disabled?: boolean,
     helperText?: string,
     previewUrl?: string | null,
-    asImageTile?: boolean
+    asImageTile?: boolean,
+    onClear?: (event: React.MouseEvent) => void
   ) => (
-    <div className="space-y-1.5">
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={disabled}
-        className={asImageTile ? 'video-image-upload-tile focus-ring' : `video-upload-chip focus-ring ${previewUrl ? 'has-preview' : ''}`}
-      >
-        {asImageTile ? (
-          previewUrl ? (
-            <>
-              <img src={previewUrl} alt={`${label}预览`} className="video-image-upload-tile-image" />
-              <span className="video-image-upload-tile-badge">{label}</span>
-              <span className="video-upload-hover-preview">
-                <img src={previewUrl} alt={`${label}大图预览`} className="video-upload-hover-image" />
-              </span>
-            </>
-          ) : (
-            <>
-              <i className={`fas ${iconClass}`}></i>
-              <span>{label}</span>
-            </>
-          )
-        ) : (
-          <>
-            {previewUrl ? (
-              <span className="video-upload-thumb-wrap">
-                <img src={previewUrl} alt={`${label}预览`} className="video-upload-thumb" />
+    <div className={`space-y-1.5 ${asImageTile ? 'video-image-upload-outer' : ''}`}>
+      <div className={`video-upload-tile-wrap group ${asImageTile ? 'video-image-upload-wrap' : ''}`}>
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={disabled}
+          className={asImageTile
+            ? `video-image-upload-tile focus-ring ${previewUrl ? 'has-preview' : ''}`
+            : `video-upload-chip focus-ring ${previewUrl ? 'has-preview' : ''}`}
+        >
+          {asImageTile ? (
+            previewUrl ? (
+              <>
+                <img
+                  src={previewUrl}
+                  alt={`${label}预览`}
+                  className="video-image-upload-tile-image"
+                />
+                <span className="video-image-upload-tile-badge">{label}</span>
                 <span className="video-upload-hover-preview">
                   <img src={previewUrl} alt={`${label}大图预览`} className="video-upload-hover-image" />
                 </span>
-              </span>
+              </>
             ) : (
-              <i className={`fas ${iconClass}`}></i>
-            )}
-            <span>{label}</span>
-          </>
-        )}
-      </button>
+              <>
+                <i className={`fas ${iconClass}`}></i>
+                <span>{label}</span>
+              </>
+            )
+          ) : (
+            <>
+              {previewUrl ? (
+                <span className="video-upload-thumb-wrap">
+                  <img src={previewUrl} alt={`${label}预览`} className="video-upload-thumb" />
+                  <span className="video-upload-hover-preview">
+                    <img src={previewUrl} alt={`${label}大图预览`} className="video-upload-hover-image" />
+                  </span>
+                </span>
+              ) : (
+                <i className={`fas ${iconClass}`}></i>
+              )}
+              <span>{label}</span>
+            </>
+          )}
+        </button>
+        {file && onClear ? (
+          <button
+            type="button"
+            onClick={onClear}
+            className="video-upload-clear-button ghost-button focus-ring h-8 w-8 text-[11px] opacity-70 group-hover:opacity-100 text-[var(--error)]"
+            title={`删除${label}`}
+            aria-label={`删除${label}`}
+          >
+            <i className="fas fa-trash-can"></i>
+          </button>
+        ) : null}
+      </div>
       <p className="video-upload-name">{file ? file.name : helperText || '未选择文件'}</p>
     </div>
   );
@@ -461,14 +597,13 @@ const VideoStudio: React.FC = () => {
                     {task.status === 'completed' && task.videoUrl ? (
                       <video src={task.videoUrl} controls playsInline className="w-full h-full object-cover rounded-xl" />
                     ) : (
-                      <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)] gap-2">
+                      <div className="video-task-player-status">
                         <i className={`fas ${task.status === 'failed' ? 'fa-triangle-exclamation' : 'fa-spinner fa-spin'} text-lg`}></i>
                         <p className="text-xs">{task.status === 'failed' ? task.errorMessage || '任务执行失败' : '视频生成中...'}</p>
                       </div>
                     )}
                   </div>
 
-                  <p className="text-[12px] text-[var(--text-secondary)] leading-relaxed break-words">{task.prompt}</p>
                 </div>
 
                 <div className="panel-subtle rounded-2xl p-4 space-y-3 border border-[rgba(125,112,104,0.22)]">
@@ -476,34 +611,58 @@ const VideoStudio: React.FC = () => {
                     <p className="muted-label">Input 参数</p>
                     <button
                       type="button"
-                      onClick={() => handleReuseTaskConfig(task)}
+                      onClick={() => void handleReuseTaskConfig(task)}
+                      disabled={reusingTaskID === task.id}
                       className="ghost-button focus-ring h-8 px-3 text-[11px] font-semibold"
                     >
-                      <i className="fas fa-rotate-left mr-1"></i>
-                      复用
+                      <i className={`fas ${reusingTaskID === task.id ? 'fa-spinner fa-spin' : 'fa-rotate-left'} mr-1`}></i>
+                      {reusingTaskID === task.id ? '复用中...' : '复用'}
                     </button>
                   </div>
 
-                  <div className="space-y-2 text-[12px] text-[var(--text-secondary)]">
-                    <div className="flex justify-between gap-2">
-                      <span>模型</span>
-                      <span className="font-semibold text-[var(--text-primary)]">{getModelName(task.modelCode)}</span>
+                  <div className="space-y-3 text-[12px] text-[var(--text-secondary)]">
+                    <div className="video-task-meta-tags">
+                      <span className="video-task-meta-tag">{getModelName(task.modelCode)}</span>
+                      <span className="video-task-meta-tag">{task.resolution}</span>
+                      <span className="video-task-meta-tag">{task.duration}s</span>
                     </div>
-                    <div className="flex justify-between gap-2">
-                      <span>分辨率 / 时长</span>
-                      <span className="font-semibold text-[var(--text-primary)]">{task.resolution} · {task.duration}s</span>
+
+                    <div className="video-task-prompt-block">
+                      <p className="video-task-prompt-text">{task.prompt}</p>
                     </div>
-                    <div className="flex justify-between gap-2">
-                      <span>首帧</span>
-                      <span className="font-semibold text-[var(--text-primary)] truncate max-w-[170px]">{task.startFrameName || '未设置'}</span>
+
+                    <div className={`video-task-input-grid ${task.endFrameName || task.endFrameUrl ? '' : 'single'}`}>
+                      <div className="video-task-media-card">
+                        <span className="video-task-media-label">首帧</span>
+                        <div className="video-task-media-preview">
+                          {task.startFrameUrl ? (
+                            <img src={task.startFrameUrl} alt={task.startFrameName || '首帧预览'} className="video-task-media-image" />
+                          ) : (
+                            <span className="video-task-media-empty">未设置</span>
+                          )}
+                        </div>
+                      </div>
+                      {task.endFrameName || task.endFrameUrl ? (
+                        <div className="video-task-media-card">
+                          <span className="video-task-media-label">尾帧</span>
+                          <div className="video-task-media-preview">
+                            {task.endFrameUrl ? (
+                              <img src={task.endFrameUrl} alt={task.endFrameName || '尾帧预览'} className="video-task-media-image" />
+                            ) : (
+                              <span className="video-task-media-empty">暂无预览</span>
+                            )}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="flex justify-between gap-2">
-                      <span>尾帧</span>
-                      <span className="font-semibold text-[var(--text-primary)] truncate max-w-[170px]">{task.endFrameName || '未设置'}</span>
-                    </div>
-                    <div className="flex justify-between gap-2">
-                      <span>音频</span>
-                      <span className="font-semibold text-[var(--text-primary)] truncate max-w-[170px]">{task.audioName || '未设置'}</span>
+
+                    <div className="video-task-audio-row">
+                      <span className="video-task-media-label">音频</span>
+                      {task.audioUrl ? (
+                        <audio controls preload="none" src={task.audioUrl} className="video-task-audio-player" />
+                      ) : (
+                        <span className="video-task-media-empty">未设置</span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -637,8 +796,18 @@ const VideoStudio: React.FC = () => {
           />
 
           <div className="mt-4 space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-center">
-              {renderFileButton('首帧', 'fa-image', startFrameFile, () => startFrameInputRef.current?.click(), false, '必填：静态起始画面', startFramePreviewUrl, true)}
+            <div className="video-frame-upload-grid grid grid-cols-1 sm:grid-cols-[1fr_auto_1fr] gap-3 items-center">
+              {renderFileButton(
+                '首帧',
+                'fa-image',
+                startFrameFile,
+                () => startFrameInputRef.current?.click(),
+                false,
+                '必填：静态起始画面',
+                startFramePreviewUrl,
+                true,
+                handleClearStartFrame
+              )}
               <button
                 type="button"
                 onClick={handleSwapFrames}
@@ -648,7 +817,17 @@ const VideoStudio: React.FC = () => {
               >
                 <i className="fas fa-right-left"></i>
               </button>
-              {renderFileButton('尾帧', 'fa-images', endFrameFile, () => endFrameInputRef.current?.click(), false, '可选：静态结束画面', endFramePreviewUrl, true)}
+              {renderFileButton(
+                '尾帧',
+                'fa-images',
+                endFrameFile,
+                () => endFrameInputRef.current?.click(),
+                false,
+                '可选：静态结束画面',
+                endFramePreviewUrl,
+                true,
+                handleClearEndFrame
+              )}
             </div>
 
             <div className="space-y-2">
@@ -679,13 +858,24 @@ const VideoStudio: React.FC = () => {
                         <i className="fas fa-check"></i>
                         音频参考已就绪
                       </span>
-                      <button
-                        type="button"
-                        onClick={handleResetAudio}
-                        className="ghost-button focus-ring h-8 px-3 text-xs font-semibold"
-                      >
-                        更换音频
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleReplaceAudio}
+                          className="ghost-button focus-ring h-8 px-3 text-xs font-semibold"
+                        >
+                          更换音频
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleResetAudio}
+                          className="ghost-button focus-ring h-8 w-8 text-[11px] opacity-70 hover:opacity-100 text-[var(--error)]"
+                          title="删除音频"
+                          aria-label="删除音频"
+                        >
+                          <i className="fas fa-trash-can"></i>
+                        </button>
+                      </div>
                     </div>
 
                     {audioFile && audioPreviewUrl ? (
