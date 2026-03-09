@@ -157,7 +157,7 @@ func persistUploadedFile(c *gin.Context, userID string, file *multipart.FileHead
 
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			c.JSON(http.StatusConflict, gin.H{
-				"error": "Identical file already exists under another account",
+				"error": "Identical file already exists",
 			})
 			return
 		}
