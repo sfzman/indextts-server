@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"backend-server/middleware"
@@ -26,7 +28,7 @@ type CreateVideoTaskRequest struct {
 	AudioFileID string `json:"audio_file_id" binding:"omitempty,len=36"`
 	AudioURL    string `json:"audio_url"`
 
-	Resolution   string `json:"resolution" binding:"omitempty,oneof=480P 720P 1080P"`
+	Resolution   string `json:"resolution" binding:"omitempty"`
 	Duration     *int   `json:"duration" binding:"omitempty,min=1,max=30"`
 	PromptExtend *bool  `json:"prompt_extend"`
 	Audio        *bool  `json:"audio"`
@@ -121,9 +123,10 @@ func CreateVideoTask(c *gin.Context) {
 		return
 	}
 
-	if strings.TrimSpace(req.ImageFileID) == "" && strings.TrimSpace(req.ImageURL) == "" {
+	modelDef, _ := services.GetVideoModelDefinition(req.Model)
+	if err := validateVideoTaskRequest(modelDef, req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{
-			"error": "image_file_id or image_url is required",
+			"error": err.Error(),
 		})
 		return
 	}
@@ -142,17 +145,12 @@ func CreateVideoTask(c *gin.Context) {
 		return
 	}
 
-	upstreamInput := services.MobiVideoInput{
-		Prompt:         strings.TrimSpace(req.Prompt),
-		NegativePrompt: strings.TrimSpace(req.NegativePrompt),
-		Template:       strings.TrimSpace(req.Template),
-	}
-
 	imageFilename := ""
 	endFrameFilename := ""
 	audioFilename := ""
+	imageURL := ""
+	audioURL := ""
 
-	// Image source: prefer file id.
 	if strings.TrimSpace(req.ImageFileID) != "" {
 		var imageFile models.File
 		if err := models.DB.First(&imageFile, "id = ? AND user_id = ?", req.ImageFileID, userID).Error; err != nil {
@@ -162,17 +160,17 @@ func CreateVideoTask(c *gin.Context) {
 			return
 		}
 
-		imageURL, err := services.GetSignedURL(imageFile.OSSKey, 86400)
+		signedImageURL, err := services.GetSignedURL(imageFile.OSSKey, 86400)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "Failed to sign image URL: " + err.Error(),
 			})
 			return
 		}
-		upstreamInput.ImgURL = imageURL
+		imageURL = signedImageURL
 		imageFilename = imageFile.Filename
 	} else {
-		upstreamInput.ImgURL = strings.TrimSpace(req.ImageURL)
+		imageURL = strings.TrimSpace(req.ImageURL)
 	}
 
 	if strings.TrimSpace(req.EndFrameFileID) != "" {
@@ -186,7 +184,6 @@ func CreateVideoTask(c *gin.Context) {
 		endFrameFilename = endFrameFile.Filename
 	}
 
-	// Optional audio source.
 	if strings.TrimSpace(req.AudioFileID) != "" {
 		var audioFile models.File
 		if err := models.DB.First(&audioFile, "id = ? AND user_id = ?", req.AudioFileID, userID).Error; err != nil {
@@ -196,33 +193,41 @@ func CreateVideoTask(c *gin.Context) {
 			return
 		}
 
-		audioURL, err := services.GetSignedURL(audioFile.OSSKey, 86400)
+		signedAudioURL, err := services.GetSignedURL(audioFile.OSSKey, 86400)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{
 				"error": "Failed to sign audio URL: " + err.Error(),
 			})
 			return
 		}
-		upstreamInput.AudioURL = audioURL
+		audioURL = signedAudioURL
 		audioFilename = audioFile.Filename
 	} else if strings.TrimSpace(req.AudioURL) != "" {
-		upstreamInput.AudioURL = strings.TrimSpace(req.AudioURL)
+		audioURL = strings.TrimSpace(req.AudioURL)
 	}
 
-	upstreamReq := &services.MobiVideoSynthesisRequest{
-		Model: req.Model,
-		Input: upstreamInput,
-		Parameters: &services.MobiVideoParameters{
-			Audio:        req.Audio,
-			Duration:     req.Duration,
-			PromptExtend: req.PromptExtend,
-			Resolution:   req.Resolution,
-			Seed:         req.Seed,
-			Watermark:    req.Watermark,
-		},
+	provider, err := services.GetVideoProvider(req.Model)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": err.Error(),
+		})
+		return
 	}
 
-	upstreamResp, err := services.SubmitMobiVideoTask(upstreamReq)
+	upstreamResp, err := provider.Submit(&services.VideoProviderSubmitRequest{
+		ModelCode:      req.Model,
+		Prompt:         strings.TrimSpace(req.Prompt),
+		NegativePrompt: strings.TrimSpace(req.NegativePrompt),
+		Template:       strings.TrimSpace(req.Template),
+		ImageURL:       imageURL,
+		AudioURL:       audioURL,
+		Resolution:     strings.TrimSpace(req.Resolution),
+		Duration:       req.Duration,
+		PromptExtend:   req.PromptExtend,
+		Audio:          req.Audio,
+		Seed:           req.Seed,
+		Watermark:      req.Watermark,
+	})
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": "Failed to submit video task: " + err.Error(),
@@ -230,8 +235,8 @@ func CreateVideoTask(c *gin.Context) {
 		return
 	}
 
-	initialStatus := services.MapMobiTaskStatus(upstreamResp.Output.TaskStatus)
-	if initialStatus != models.TaskStatusFailed && strings.TrimSpace(upstreamResp.Output.TaskID) == "" {
+	initialStatus := provider.MapStatus(upstreamResp.Status)
+	if initialStatus != models.TaskStatusFailed && strings.TrimSpace(upstreamResp.TaskID) == "" {
 		c.JSON(http.StatusBadGateway, gin.H{
 			"error": "Provider did not return task_id",
 		})
@@ -248,7 +253,7 @@ func CreateVideoTask(c *gin.Context) {
 		Status:         initialStatus,
 		Model:          req.Model,
 		Prompt:         strings.TrimSpace(req.Prompt),
-		ProviderTaskID: upstreamResp.Output.TaskID,
+		ProviderTaskID: upstreamResp.TaskID,
 	}
 
 	meta := map[string]interface{}{
@@ -268,9 +273,13 @@ func CreateVideoTask(c *gin.Context) {
 		"audio":               req.Audio,
 		"seed":                req.Seed,
 		"watermark":           req.Watermark,
+		"provider":            provider.Name(),
 		"provider_request_id": upstreamResp.RequestID,
-		"provider_status":     upstreamResp.Output.TaskStatus,
-		"provider_message":    upstreamResp.Output.Message,
+		"provider_status":     upstreamResp.Status,
+		"provider_message":    upstreamResp.Message,
+	}
+	for key, value := range upstreamResp.RawMeta {
+		meta[key] = value
 	}
 	if err := task.SetMetaMap(compactMeta(meta)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{
@@ -281,7 +290,7 @@ func CreateVideoTask(c *gin.Context) {
 
 	// If upstream returns immediate failure, we still keep local failed task for visibility.
 	if task.Status == models.TaskStatusFailed {
-		task.ErrorMessage = firstNonEmpty(upstreamResp.Output.Message, "Video task failed at provider")
+		task.ErrorMessage = firstNonEmpty(upstreamResp.Message, "Video task failed at provider")
 	}
 
 	if err := models.DB.Create(&task).Error; err != nil {
@@ -302,6 +311,45 @@ func CreateVideoTask(c *gin.Context) {
 		"provider_task_id": task.ProviderTaskID,
 		"created_at":       task.CreatedAt,
 	})
+}
+
+func validateVideoTaskRequest(modelDef services.VideoModelDefinition, req CreateVideoTaskRequest) error {
+	hasFirstFrame := strings.TrimSpace(req.ImageFileID) != "" || strings.TrimSpace(req.ImageURL) != ""
+	hasEndFrame := strings.TrimSpace(req.EndFrameFileID) != ""
+	hasAudio := strings.TrimSpace(req.AudioFileID) != "" || strings.TrimSpace(req.AudioURL) != ""
+
+	if !modelDef.SupportsFirstFrame && hasFirstFrame {
+		return fmt.Errorf("current model does not support first frame input")
+	}
+	if modelDef.SupportsFirstFrame && !modelDef.SupportsTextOnly && !hasFirstFrame {
+		return fmt.Errorf("image_file_id or image_url is required")
+	}
+	if hasEndFrame && !modelDef.SupportsEndFrame {
+		return fmt.Errorf("current model does not support end frame input")
+	}
+	if hasAudio && !modelDef.SupportsAudio {
+		return fmt.Errorf("current model does not support audio input")
+	}
+
+	resolution := strings.TrimSpace(req.Resolution)
+	if resolution != "" {
+		if !slices.Contains(modelDef.Resolutions, resolution) {
+			return fmt.Errorf("current model does not support resolution %s", resolution)
+		}
+	}
+
+	if req.Duration != nil {
+		if resolution == "" {
+			return fmt.Errorf("resolution is required when duration is specified")
+		}
+
+		durationOptions, ok := modelDef.DurationOptionsByResolution[resolution]
+		if !ok || !slices.Contains(durationOptions, *req.Duration) {
+			return fmt.Errorf("%s only supports durations %v", resolution, durationOptions)
+		}
+	}
+
+	return nil
 }
 
 // GetVideoTask returns task detail.

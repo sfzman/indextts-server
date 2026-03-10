@@ -6,6 +6,14 @@ export interface VideoModelOption {
   name: string;
   code: string;
   description: string;
+  provider: string;
+  credits: number;
+  supports_text_only: boolean;
+  supports_first_frame: boolean;
+  supports_end_frame: boolean;
+  supports_audio: boolean;
+  resolutions: string[];
+  duration_options_by_resolution: Record<string, number[]>;
 }
 
 interface VideoModelListResponse {

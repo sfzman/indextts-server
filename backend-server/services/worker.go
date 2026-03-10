@@ -202,47 +202,28 @@ func (w *Worker) processNextVideoTask() {
 	}
 
 	log.Printf("Polling video task %s (provider task=%s)", task.ID, task.ProviderTaskID)
-	meta := task.GetMetaMap()
+	provider, err := GetVideoProvider(task.Model)
+	if err != nil {
+		log.Printf("Video task %s provider lookup failed: %v", task.ID, err)
+		models.DB.Model(&task).Updates(map[string]interface{}{
+			"status":        models.TaskStatusFailed,
+			"error_message": "Unsupported video provider: " + err.Error(),
+		})
+		return
+	}
 
-	providerResp, err := QueryMobiVideoTask(task.ProviderTaskID)
+	providerResp, err := provider.Query(task.ProviderTaskID)
 	if err != nil {
 		log.Printf("Video task %s polling failed: %v", task.ID, err)
+		meta := task.GetMetaMap()
 		meta["provider_message"] = err.Error()
 		updateTaskMetaOnly(&task, meta)
 		return
 	}
 
-	nextStatus := MapMobiTaskStatus(providerResp.Output.TaskStatus)
-	meta["provider_status"] = providerResp.Output.TaskStatus
-	meta["provider_message"] = providerResp.Output.Message
-	if providerResp.RequestID != "" {
-		meta["provider_request_id"] = providerResp.RequestID
-	}
-	if providerResp.Output.VideoURL != "" {
-		meta["provider_video_url"] = providerResp.Output.VideoURL
-	}
-	if providerResp.Output.SubmitTime != "" {
-		meta["provider_submit_time"] = providerResp.Output.SubmitTime
-	}
-	if providerResp.Output.ScheduleTime != "" {
-		meta["provider_scheduled_time"] = providerResp.Output.ScheduleTime
-	}
-	if providerResp.Output.EndTime != "" {
-		meta["provider_end_time"] = providerResp.Output.EndTime
-	}
-	if providerResp.Output.OrigPrompt != "" {
-		meta["provider_orig_prompt"] = providerResp.Output.OrigPrompt
-	}
-	if providerResp.Output.ActualPrompt != "" {
-		meta["provider_actual_prompt"] = providerResp.Output.ActualPrompt
-	}
-	if len(providerResp.Usage) > 0 {
-		meta["provider_usage"] = providerResp.Usage
-	}
-
-	metaJSON, marshalErr := marshalTaskMeta(meta)
-	if marshalErr != nil {
-		log.Printf("Video task %s failed to serialize metadata: %v", task.ID, marshalErr)
+	updates, err := buildVideoTaskProviderUpdates(task, providerResp)
+	if err != nil {
+		log.Printf("Video task %s failed to serialize metadata: %v", task.ID, err)
 		models.DB.Model(&task).Updates(map[string]interface{}{
 			"status":        models.TaskStatusFailed,
 			"error_message": "Failed to serialize video metadata",
@@ -250,13 +231,8 @@ func (w *Worker) processNextVideoTask() {
 		return
 	}
 
-	updates := map[string]interface{}{
-		"status": nextStatus,
-		"meta":   metaJSON,
-	}
-
+	nextStatus, _ := updates["status"].(models.TaskStatus)
 	if nextStatus == models.TaskStatusFailed {
-		updates["error_message"] = firstNonEmptyString(providerResp.Output.Message, "Video generation failed")
 		models.DB.Model(&task).Updates(updates)
 		return
 	}
@@ -266,14 +242,14 @@ func (w *Worker) processNextVideoTask() {
 		return
 	}
 
-	if providerResp.Output.VideoURL == "" {
+	if providerResp.ResultURL == "" {
 		updates["status"] = models.TaskStatusFailed
 		updates["error_message"] = "Provider returned SUCCEEDED but no video_url"
 		models.DB.Model(&task).Updates(updates)
 		return
 	}
 
-	videoData, contentType, err := downloadRemoteFile(providerResp.Output.VideoURL)
+	videoData, contentType, err := downloadRemoteFile(providerResp.ResultURL)
 	if err != nil {
 		log.Printf("Video task %s failed to download provider result: %v", task.ID, err)
 		updates["status"] = models.TaskStatusFailed
@@ -314,10 +290,45 @@ func (w *Worker) processNextVideoTask() {
 	updates["status"] = models.TaskStatusCompleted
 	updates["result_video_file_id"] = resultFile.ID
 	updates["error_message"] = ""
-	updates["meta"] = metaJSON
 	models.DB.Model(&task).Updates(updates)
 
 	log.Printf("Video task %s completed successfully, result file: %s", task.ID, resultFile.ID)
+}
+
+func buildVideoTaskProviderUpdates(task models.VideoTask, result *VideoProviderTaskResult) (map[string]interface{}, error) {
+	provider, err := GetVideoProvider(task.Model)
+	if err != nil {
+		return nil, err
+	}
+
+	meta := task.GetMetaMap()
+	meta["provider"] = provider.Name()
+	meta["provider_status"] = result.Status
+	meta["provider_message"] = result.Message
+	if result.RequestID != "" {
+		meta["provider_request_id"] = result.RequestID
+	}
+	if result.ResultURL != "" {
+		meta["provider_result_url"] = result.ResultURL
+	}
+	for key, value := range result.RawMeta {
+		meta[key] = value
+	}
+
+	metaJSON, err := marshalTaskMeta(meta)
+	if err != nil {
+		return nil, err
+	}
+
+	updates := map[string]interface{}{
+		"status": provider.MapStatus(result.Status),
+		"meta":   metaJSON,
+	}
+	if updates["status"] == models.TaskStatusFailed {
+		updates["error_message"] = firstNonEmptyString(result.Message, "Video generation failed")
+	}
+
+	return updates, nil
 }
 
 func downloadRemoteFile(url string) ([]byte, string, error) {
