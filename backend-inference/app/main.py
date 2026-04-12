@@ -135,6 +135,7 @@ async def verify_jwt(request: Request, call_next):
             token,
             jwt_public_key,
             algorithms=["RS256"],
+            leeway=settings.JWT_LEEWAY_SECONDS,
             options={"require": ["exp"], "verify_exp": True}
         )
     except jwt.ExpiredSignatureError:

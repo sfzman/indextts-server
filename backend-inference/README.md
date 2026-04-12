@@ -145,6 +145,7 @@ openssl rsa -in private_key.pem -pubout -out public_key.pem
 # Read public key and set as environment variable (replace newlines with \n)
 export JWT_PUBLIC_KEY=$(cat public_key.pem | sed ':a;N;$!ba;s/\n/\\n/g')
 export JWT_MAX_AGE=10  # Token validity in seconds (default: 10)
+export JWT_LEEWAY_SECONDS=30  # Allow small clock skew between caller/server
 ```
 
 **Docker deployment:**
@@ -210,6 +211,7 @@ Environment variables:
 | `DEFAULT_REFERENCE` | `examples/voice.wav` | Default reference audio |
 | `JWT_PUBLIC_KEY` | `` | RSA public key content (use `\n` for newlines, empty = auth disabled) |
 | `JWT_MAX_AGE` | `10` | Max token age in seconds |
+| `JWT_LEEWAY_SECONDS` | `30` | Allowed JWT clock skew in seconds when validating `exp`/`iat` |
 
 ## Server Deployment (without Docker)
 

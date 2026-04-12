@@ -57,9 +57,9 @@ func generateJWT() (string, error) {
 	}
 
 	cfg := config.Cfg
+	expiresAt := time.Now().Add(time.Duration(cfg.JWTExpireSeconds) * time.Second)
 	claims := jwt.MapClaims{
-		"exp": time.Now().Add(time.Duration(cfg.JWTExpireSeconds) * time.Second).Unix(),
-		"iat": time.Now().Unix(),
+		"exp": expiresAt.Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)

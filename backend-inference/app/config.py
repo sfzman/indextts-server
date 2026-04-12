@@ -32,6 +32,7 @@ class Settings:
     # JWT authentication settings
     JWT_PUBLIC_KEY: str = os.getenv("JWT_PUBLIC_KEY", "").replace("\\n", "\n")
     JWT_MAX_AGE: int = int(os.getenv("JWT_MAX_AGE", "10"))  # seconds
+    JWT_LEEWAY_SECONDS: int = int(os.getenv("JWT_LEEWAY_SECONDS", "30"))
 
 
 settings = Settings()
