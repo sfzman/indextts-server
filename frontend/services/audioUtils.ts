@@ -155,6 +155,22 @@ export const trimAudioFile = async (
   }
 };
 
+export const blobToWavFile = async (
+  blob: Blob,
+  filename: string = 'recording.wav'
+): Promise<File> => {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioContext = createBrowserAudioContext();
+  try {
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    const wavBuffer = bufferToWav(audioBuffer);
+    const outputBlob = new Blob([wavBuffer], { type: 'audio/wav' });
+    return new File([outputBlob], filename, { type: 'audio/wav' });
+  } finally {
+    await audioContext.close();
+  }
+};
+
 // Simple WAV encoder
 function bufferToWav(abuffer: AudioBuffer) {
   const numOfChan = abuffer.numberOfChannels,

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getFileBlob, getFileUrl, uploadMediaFile } from '../services/fileService';
 import AudioWaveformEditor from './AudioWaveformEditor';
+import AudioRecorder from './AudioRecorder';
 import { trimAudioFile } from '../services/audioUtils';
 import {
   createVideoTask,
@@ -133,6 +134,7 @@ const VideoStudio: React.FC = () => {
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState<string | null>(null);
   const [audioTrim, setAudioTrim] = useState({ start: 0, end: 0, duration: 0 });
+  const [audioRecordingMode, setAudioRecordingMode] = useState(false);
   const [startFramePreviewUrl, setStartFramePreviewUrl] = useState<string | null>(null);
   const [endFramePreviewUrl, setEndFramePreviewUrl] = useState<string | null>(null);
 
@@ -552,6 +554,7 @@ const VideoStudio: React.FC = () => {
     event.stopPropagation();
     setAudioFile(null);
     setAudioTrim({ start: 0, end: 0, duration: 0 });
+    setAudioRecordingMode(false);
     if (audioInputRef.current) {
       audioInputRef.current.value = '';
     }
@@ -940,7 +943,7 @@ const VideoStudio: React.FC = () => {
               <div
                 title={disabledAudioReason}
                 onClick={() => {
-                  if (!audioFile && supportsAudio) {
+                  if (!audioFile && supportsAudio && !audioRecordingMode) {
                     audioInputRef.current?.click();
                   }
                 }}
@@ -948,7 +951,16 @@ const VideoStudio: React.FC = () => {
                   audioFile ? 'is-filled' : ''
                 } ${!supportsAudio ? 'disabled' : ''}`}
               >
-                {!audioFile ? (
+                {audioRecordingMode ? (
+                  <AudioRecorder
+                    onComplete={async (file) => {
+                      setAudioRecordingMode(false);
+                      setAudioFile(file);
+                      setAudioTrim({ start: 0, end: 0, duration: 0 });
+                    }}
+                    onCancel={() => setAudioRecordingMode(false)}
+                  />
+                ) : !audioFile ? (
                   <>
                     <div className="w-10 h-10 rounded-xl panel-subtle flex items-center justify-center text-[var(--accent-ink)]">
                       <i className="fas fa-music"></i>
@@ -956,6 +968,33 @@ const VideoStudio: React.FC = () => {
                     <p className="text-xs text-[var(--text-secondary)]">
                       {supportsAudio ? '可选：上传音频并裁剪后用于视频生成' : '当前模型不支持音频'}
                     </p>
+                    {supportsAudio && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            audioInputRef.current?.click();
+                          }}
+                          className="ghost-button focus-ring h-8 px-3 text-xs font-semibold"
+                        >
+                          <i className="fas fa-folder-open mr-1"></i>
+                          选择文件
+                        </button>
+                        <span className="text-[11px] text-[var(--text-muted)]">或</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAudioRecordingMode(true);
+                          }}
+                          className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
+                        >
+                          <i className="fas fa-microphone mr-1"></i>
+                          录制音频
+                        </button>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="w-full space-y-3 text-left">

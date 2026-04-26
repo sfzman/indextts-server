@@ -7,6 +7,7 @@ import { User, getCurrentUser } from '../services/api';
 import TaskList from './TaskList';
 import FavoritesPanel from './FavoritesPanel';
 import AudioWaveformEditor from './AudioWaveformEditor';
+import AudioRecorder from './AudioRecorder';
 import { addFavoriteByFileID } from '../services/favoriteService';
 
 const initialVectors: EmotionVectors = {
@@ -88,6 +89,8 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
   const voiceInputRef = useRef<HTMLInputElement>(null);
   const emotionInputRef = useRef<HTMLInputElement>(null);
   const [emotionPreviewUrl, setEmotionPreviewUrl] = useState<string | null>(null);
+  const [voiceRecordingMode, setVoiceRecordingMode] = useState(false);
+  const [emotionRecordingMode, setEmotionRecordingMode] = useState(false);
 
   useEffect(() => {
     if (toast) {
@@ -218,6 +221,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
     setVoiceTrim({ start: 0, end: 0, duration: 0 });
     setProject((prev) => ({ ...prev, voiceReference: null }));
     if (voiceInputRef.current) voiceInputRef.current.value = '';
+    setVoiceRecordingMode(false);
   };
 
   const processEmotionFile = async (file: File) => {
@@ -249,6 +253,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
     setEmotionTrim({ start: 0, end: 0, duration: 0 });
     setProject((prev) => ({ ...prev, emotionReference: null }));
     if (emotionInputRef.current) emotionInputRef.current.value = '';
+    setEmotionRecordingMode(false);
   };
 
   const handleUseVoiceFavorite = async (favorite: AudioFavorite) => {
@@ -487,14 +492,22 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
               }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
-              onClick={() => !project.voiceReference && !isProcessing && voiceInputRef.current?.click()}
+              onClick={() => !project.voiceReference && !isProcessing && !voiceRecordingMode && voiceInputRef.current?.click()}
               className={`upload-zone p-5 flex flex-col items-center justify-center text-center gap-3 cursor-pointer ${
                 isDragging ? 'is-dragging' : ''
               } ${project.voiceReference ? 'is-filled' : ''} ${isProcessing ? 'disabled' : ''}`}
             >
               <input type="file" ref={voiceInputRef} className="hidden" accept="audio/*" onChange={handleFileChange} />
 
-              {!project.voiceReference ? (
+              {voiceRecordingMode ? (
+                <AudioRecorder
+                  onComplete={async (file) => {
+                    setVoiceRecordingMode(false);
+                    await processVoiceFile(file);
+                  }}
+                  onCancel={() => setVoiceRecordingMode(false)}
+                />
+              ) : !project.voiceReference ? (
                 <>
                   <div className="w-12 h-12 rounded-xl panel-subtle flex items-center justify-center">
                     <i className="fas fa-cloud-arrow-up text-lg text-[var(--accent-ink)]"></i>
@@ -502,6 +515,31 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
                   <div>
                     <p className="text-sm font-semibold text-[var(--text-primary)]">点击或拖拽上传音色样本</p>
                     <p className="text-[11px] text-[var(--text-muted)] mt-1">支持 WAV / MP3 / AAC，建议 15 秒以上</p>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        voiceInputRef.current?.click();
+                      }}
+                      className="ghost-button focus-ring h-8 px-3 text-xs font-semibold"
+                    >
+                      <i className="fas fa-folder-open mr-1"></i>
+                      选择文件
+                    </button>
+                    <span className="text-[11px] text-[var(--text-muted)]">或</span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVoiceRecordingMode(true);
+                      }}
+                      className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
+                    >
+                      <i className="fas fa-microphone mr-1"></i>
+                      录制音频
+                    </button>
                   </div>
                 </>
               ) : (
@@ -638,7 +676,7 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
                 </div>
 
                 <div
-                  onClick={() => !project.emotionReference && !isProcessing && emotionInputRef.current?.click()}
+                  onClick={() => !project.emotionReference && !isProcessing && !emotionRecordingMode && emotionInputRef.current?.click()}
                   className={`upload-zone p-4 flex flex-col items-center justify-center text-center gap-2 cursor-pointer ${
                     project.emotionReference ? 'is-filled' : ''
                   } ${isProcessing ? 'disabled' : ''}`}
@@ -651,12 +689,45 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
                     onChange={handleEmotionFileChange}
                   />
 
-                  {!project.emotionReference ? (
+                  {emotionRecordingMode ? (
+                    <AudioRecorder
+                      onComplete={async (file) => {
+                        setEmotionRecordingMode(false);
+                        await processEmotionFile(file);
+                      }}
+                      onCancel={() => setEmotionRecordingMode(false)}
+                    />
+                  ) : !project.emotionReference ? (
                     <>
                       <div className="w-10 h-10 rounded-xl panel-subtle flex items-center justify-center text-[var(--accent-rose)]">
                         <i className="fas fa-masks-theater"></i>
                       </div>
                       <p className="text-xs text-[var(--text-secondary)]">上传情感参考音频</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            emotionInputRef.current?.click();
+                          }}
+                          className="ghost-button focus-ring h-8 px-3 text-xs font-semibold"
+                        >
+                          <i className="fas fa-folder-open mr-1"></i>
+                          选择文件
+                        </button>
+                        <span className="text-[11px] text-[var(--text-muted)]">或</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEmotionRecordingMode(true);
+                          }}
+                          className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
+                        >
+                          <i className="fas fa-microphone mr-1"></i>
+                          录制音频
+                        </button>
+                      </div>
                     </>
                   ) : (
                     <div className="w-full space-y-3 text-left">
