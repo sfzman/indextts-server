@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { getFileBlob, getFileUrl, uploadMediaFile } from '../services/fileService';
 import AudioWaveformEditor from './AudioWaveformEditor';
 import AudioRecorder from './AudioRecorder';
-import { trimAudioFile } from '../services/audioUtils';
+import { trimAudioFile, isAudioRecordingSupported } from '../services/audioUtils';
 import {
   createVideoTask,
   getVideoModels,
@@ -981,18 +981,22 @@ const VideoStudio: React.FC = () => {
                           <i className="fas fa-folder-open mr-1"></i>
                           选择文件
                         </button>
-                        <span className="text-[11px] text-[var(--text-muted)]">或</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setAudioRecordingMode(true);
-                          }}
-                          className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
-                        >
-                          <i className="fas fa-microphone mr-1"></i>
-                          录制音频
-                        </button>
+                        {isAudioRecordingSupported() && (
+                          <>
+                            <span className="text-[11px] text-[var(--text-muted)]">或</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setAudioRecordingMode(true);
+                              }}
+                              className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
+                            >
+                              <i className="fas fa-microphone mr-1"></i>
+                              录制音频
+                            </button>
+                          </>
+                        )}
                       </div>
                     )}
                   </>

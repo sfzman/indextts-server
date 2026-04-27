@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { VoiceProject, EmotionType, EmotionVectors, CloneTask, emotionTypeToMode, TaskListItem, BackendTaskStatus, AudioFavorite } from '../types';
-import { fileToBase64, trimAudioFile } from '../services/audioUtils';
+import { fileToBase64, trimAudioFile, isAudioRecordingSupported } from '../services/audioUtils';
 import { getAudioBlob, getAudioBlobUrl, uploadAudioFile } from '../services/fileService';
 import { createTask, getTasks, pollTaskUntilDone, deleteTask, clearTasks } from '../services/taskService';
 import { User, getCurrentUser } from '../services/api';
@@ -528,18 +528,22 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
                       <i className="fas fa-folder-open mr-1"></i>
                       选择文件
                     </button>
-                    <span className="text-[11px] text-[var(--text-muted)]">或</span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setVoiceRecordingMode(true);
-                      }}
-                      className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
-                    >
-                      <i className="fas fa-microphone mr-1"></i>
-                      录制音频
-                    </button>
+                    {isAudioRecordingSupported() && (
+                      <>
+                        <span className="text-[11px] text-[var(--text-muted)]">或</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setVoiceRecordingMode(true);
+                          }}
+                          className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
+                        >
+                          <i className="fas fa-microphone mr-1"></i>
+                          录制音频
+                        </button>
+                      </>
+                    )}
                   </div>
                 </>
               ) : (
@@ -715,18 +719,22 @@ const VoiceStudio: React.FC<VoiceStudioProps> = ({ user, onUserUpdate }) => {
                           <i className="fas fa-folder-open mr-1"></i>
                           选择文件
                         </button>
-                        <span className="text-[11px] text-[var(--text-muted)]">或</span>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setEmotionRecordingMode(true);
-                          }}
-                          className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
-                        >
-                          <i className="fas fa-microphone mr-1"></i>
-                          录制音频
-                        </button>
+                        {isAudioRecordingSupported() && (
+                          <>
+                            <span className="text-[11px] text-[var(--text-muted)]">或</span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEmotionRecordingMode(true);
+                              }}
+                              className="ghost-button focus-ring h-8 px-3 text-xs font-semibold text-[var(--accent-rose)]"
+                            >
+                              <i className="fas fa-microphone mr-1"></i>
+                              录制音频
+                            </button>
+                          </>
+                        )}
                       </div>
                     </>
                   ) : (

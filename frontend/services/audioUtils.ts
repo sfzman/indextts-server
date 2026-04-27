@@ -171,6 +171,15 @@ export const blobToWavFile = async (
   }
 };
 
+export const isAudioRecordingSupported = (): boolean => {
+  return (
+    typeof navigator !== 'undefined' &&
+    !!navigator.mediaDevices &&
+    typeof navigator.mediaDevices.getUserMedia === 'function' &&
+    typeof MediaRecorder !== 'undefined'
+  );
+};
+
 // Simple WAV encoder
 function bufferToWav(abuffer: AudioBuffer) {
   const numOfChan = abuffer.numberOfChannels,

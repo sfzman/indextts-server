@@ -59,6 +59,12 @@ const AudioRecorder: React.FC<AudioRecorderProps> = ({ onComplete, onCancel }) =
 
   const startRecording = async () => {
     setError(null);
+
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+      setError('当前环境不支持录音功能，请使用 HTTPS 访问或上传本地音频文件');
+      return;
+    }
+
     setPhase('requesting');
 
     try {
