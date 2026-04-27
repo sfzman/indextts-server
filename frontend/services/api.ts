@@ -1,6 +1,6 @@
 // API 服务配置和认证相关接口
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
+import { API_BASE_URL } from './apiBase';
 
 // Token 存储 key
 const TOKEN_KEY = 'voxclone_token';
